@@ -22,6 +22,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     this.type = type;
     this.config = config;
+    this.variant = config.variant || 'normal';
     this.health = config.health;
     this.maxHealth = config.health;
     this.onShoot = null;
@@ -49,17 +50,26 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.body.allowGravity = false;
       this.body.setImmovable(true);
     } else {
+      // soldier
+      const speedMult = this.variant === 'fast' ? 1.8 : 1;
       this.setScale(useGen ? 1.5 : 2);
       this.body.setSize(useGen ? 24 : 12, useGen ? 44 : 22, true);
       this.body.setGravityY(GRAVITY);
-      this.body.setVelocityX(config.speed * (Math.random() > 0.5 ? 1 : -1));
+      this.body.setVelocityX(config.speed * speedMult * (Math.random() > 0.5 ? 1 : -1));
       this.setCollideWorldBounds(true);
+      // Variant tints
+      if (useGen) {
+        if (this.variant === 'laser') this.setTint(0xcc66ff);
+        else if (this.variant === 'fast') this.setTint(0xff9944);
+      }
     }
 
     // Shooting timers
     if (type === 'soldier' || type === 'machine') {
       this.shootTimer = scene.time.addEvent({
-        delay: config.fireRate + Math.random() * 500,
+        delay: this.variant === 'laser'
+          ? config.fireRate * 0.7
+          : config.fireRate + Math.random() * 500,
         callback: () => this.doShoot(scene),
         loop: true,
       });
@@ -75,8 +85,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   doShoot(scene) {
     if (!this.active || !scene.player || !scene.player.active) return;
     const dist = Phaser.Math.Distance.Between(this.x, this.y, scene.player.x, scene.player.y);
-    if (dist > 700) return;
-    if (this.onShoot) this.onShoot(this.x, this.y - (this.useGen ? 20 : 8), scene.player.x, scene.player.y - 10);
+    if (dist > 600) return;
+    const yOffset = this.useGen ? 20 : 8;
+    if (this.onShoot) this.onShoot(this.x, this.y - yOffset, scene.player.x, scene.player.y - 10, this.variant);
   }
 
   bossShoot(scene) {
@@ -85,7 +96,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const px = scene.player.x, py = scene.player.y - 10;
 
     if (hpPercent > 0.66) {
-      if (this.onShoot) this.onShoot(this.x, this.y - 30, px, py);
+      if (this.onShoot) this.onShoot(this.x, this.y - 30, px, py, 'normal');
     } else if (hpPercent > 0.33) {
       if (this.onShootSpread) this.onShootSpread(this.x, this.y - 30, px, py, 3, 30);
     } else {
@@ -101,10 +112,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         if (this.spriteFacesLeft) this.setFlipX(scene.player.x > this.x);
         else this.setFlipX(scene.player.x < this.x);
       }
+      const speedMult = this.variant === 'fast' ? 1.8 : 1;
       if (this.body.blocked.right || this.body.touching.right) {
-        this.body.setVelocityX(-this.config.speed);
+        this.body.setVelocityX(-this.config.speed * speedMult);
       } else if (this.body.blocked.left || this.body.touching.left) {
-        this.body.setVelocityX(this.config.speed);
+        this.body.setVelocityX(this.config.speed * speedMult);
       }
       // Walk animation
       if (this.useGen) {
@@ -152,7 +164,15 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.health -= amount;
     this.setTint(0xffffff);
     this.scene.time.delayedCall(40, () => {
-      if (this.active) this.clearTint();
+      if (this.active) {
+        if (this.useGen && this.type === 'soldier') {
+          if (this.variant === 'laser') this.setTint(0xcc66ff);
+          else if (this.variant === 'fast') this.setTint(0xff9944);
+          else this.clearTint();
+        } else {
+          this.clearTint();
+        }
+      }
     });
     if (this.health <= 0) {
       this.die();
@@ -163,7 +183,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   die() {
     if (this.shootTimer) this.shootTimer.remove();
-    const colors = { soldier: 0xaa2020, alien: 0x44aa44, machine: 0x888888, boss: 0xff4400 };
+    const colors = {
+      soldier: this.variant === 'laser' ? 0xcc66ff : (this.variant === 'fast' ? 0xff9944 : 0xaa2020),
+      alien: 0x44aa44, machine: 0x888888, boss: 0xff4400,
+    };
     const numParticles = this.type === 'boss' ? 20 : 10;
     for (let i = 0; i < numParticles; i++) {
       const px = this.x + (Math.random() - 0.5) * 40;
@@ -178,7 +201,6 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         onComplete: () => p.destroy(),
       });
     }
-    // Flash
     this.scene.tweens.add({
       targets: this,
       alpha: 0, scaleY: 0.1, duration: 300,

@@ -29,6 +29,8 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     this.load.spritesheet('player_walk', ASSETS.playerWalk, { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('player_walk_fufuruco', ASSETS.playerWalkFufuruco, { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('player_walk_lulo', ASSETS.playerWalkLulo, { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('enemy_walk', ASSETS.enemyWalk, { frameWidth: 64, frameHeight: 64 });
     this.load.image('alien_img', ASSETS.alien);
     this.load.image('machine_img', ASSETS.machine);
@@ -159,6 +161,12 @@ export class GameScene extends Phaser.Scene {
     mfg.fillStyle(0xffff88); mfg.fillCircle(4, 4, 4);
     mfg.fillStyle(0xffffff); mfg.fillCircle(4, 4, 2);
     mfg.generateTexture('muzzle_flash', 8, 8); mfg.destroy();
+    // Laser bullet
+    const lbg = this.add.graphics();
+    lbg.fillStyle(0xff00ff, 1); lbg.fillRect(0, 0, 20, 4);
+    lbg.fillStyle(0xffffff, 1); lbg.fillRect(0, 1, 16, 2);
+    lbg.fillStyle(0xff66ff, 0.6); lbg.fillRect(0, 0, 20, 4);
+    lbg.generateTexture('laser_bullet', 20, 4); lbg.destroy();
     // Platform
     const pg = this.add.graphics();
     pg.fillStyle(0xffffff); pg.fillRect(0, 0, 96, 20);
@@ -296,6 +304,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   createAnimations() {
+    ['fufuruco', 'lulo'].forEach(hero => {
+      const texKey = 'player_walk_' + hero;
+      const animKey = texKey + '_anim';
+      if (this.textures.exists(texKey) && !this.anims.exists(animKey)) {
+        this.anims.create({
+          key: animKey,
+          frames: this.anims.generateFrameNumbers(texKey, { start: 0, end: 3 }),
+          frameRate: 12, repeat: -1,
+        });
+      }
+    });
     if (this.textures.exists('player_walk') && !this.anims.exists('player_walk_anim')) {
       this.anims.create({
         key: 'player_walk_anim',
@@ -415,9 +434,9 @@ export class GameScene extends Phaser.Scene {
     if (this.isBossLevel) return;
 
     const positions = [
-      { x: 450, y: 420 }, { x: 750, y: 380 }, { x: 1050, y: 340 },
-      { x: 1400, y: 400 }, { x: 1750, y: 360 }, { x: 2100, y: 420 },
-      { x: 2450, y: 380 }, { x: 2800, y: 400 },
+      { x: 350, y: 465 }, { x: 650, y: 450 }, { x: 950, y: 440 },
+      { x: 1300, y: 460 }, { x: 1650, y: 445 }, { x: 2000, y: 465 },
+      { x: 2350, y: 450 }, { x: 2700, y: 460 },
     ];
 
     positions.forEach(p => {
@@ -464,27 +483,67 @@ export class GameScene extends Phaser.Scene {
 
     const level = LEVELS[this.levelIndex];
     const diff = DIFFICULTIES[this.difficulty];
-    const baseCount = 10 + this.subLevelIndex * 3;
+    const baseCount = 14 + this.subLevelIndex * 2;
     const enemyCount = Math.floor(baseCount * diff.enemyCount);
 
     for (let i = 0; i < enemyCount; i++) {
-      const x = 350 + (i / enemyCount) * (this.worldWidth - 500) + Math.random() * 80;
+      const fromBehind = Math.random() < 0.15;
+      let x;
+      if (fromBehind) {
+        x = Math.max(20, 20 + Math.random() * 60);
+      } else {
+        x = 450 + (i / enemyCount) * (this.worldWidth - 600) + Math.random() * 80;
+      }
+
       const type = level.enemyTypes[Math.floor(Math.random() * level.enemyTypes.length)];
+      let variant = 'normal';
+      if (type === 'soldier') {
+        const r = Math.random();
+        if (r < 0.25) variant = 'laser';
+        else if (r < 0.45) variant = 'fast';
+      }
       const y = type === 'alien'
         ? GAME_HEIGHT - 200 - Math.random() * 150
         : GAME_HEIGHT - 120;
 
-      this.spawnEnemy(x, y, type);
+      this.spawnEnemy(x, y, type, variant);
     }
+
+    // Periodic ambush spawns from screen edges
+    this.ambushTimer = this.time.addEvent({
+      delay: 6000 + Math.random() * 3000,
+      callback: this.spawnAmbush,
+      callbackScope: this,
+      loop: true,
+    });
   }
 
-  spawnEnemy(x, y, type) {
+  spawnAmbush() {
+    if (this.phase !== 'playing') return;
+    const level = LEVELS[this.levelIndex];
+    const camLeft = this.cameras.main.scrollX;
+    const camRight = camLeft + GAME_WIDTH;
+    const fromLeft = Math.random() > 0.5;
+    const x = fromLeft ? camLeft - 30 : camRight + 30;
+    const type = level.enemyTypes[Math.floor(Math.random() * level.enemyTypes.length)];
+    let variant = 'normal';
+    if (type === 'soldier') {
+      const r = Math.random();
+      if (r < 0.3) variant = 'laser';
+      else if (r < 0.5) variant = 'fast';
+    }
+    const y = type === 'alien' ? GAME_HEIGHT - 200 : GAME_HEIGHT - 120;
+    this.spawnEnemy(x, y, type, variant);
+  }
+
+  spawnEnemy(x, y, type, variant = 'normal') {
     const diff = DIFFICULTIES[this.difficulty];
     const config = {
       health: diff.enemyHealth,
       speed: diff.enemySpeed + this.levelIndex * 4,
       fireRate: diff.enemyFireRate,
       damage: diff.enemyDamage,
+      variant,
     };
 
     if (type === 'machine') {
@@ -494,7 +553,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const enemy = new Enemy(this, x, y, type, config);
-    enemy.onShoot = (ex, ey, tx, ty) => this.createEnemyBullet(ex, ey, tx, ty);
+    enemy.onShoot = (ex, ey, tx, ty, v) => this.createEnemyBullet(ex, ey, tx, ty, v);
     enemy.onShootSpread = (ex, ey, tx, ty, count, spread) =>
       this.createEnemyBulletSpread(ex, ey, tx, ty, count, spread);
     this.enemies.add(enemy);
@@ -521,15 +580,22 @@ export class GameScene extends Phaser.Scene {
 
   // ==================== BULLETS ====================
 
-  createEnemyBullet(x, y, targetX, targetY) {
-    const bullet = this.enemyBullets.get(x, y, 'enemy_bullet');
+  createEnemyBullet(x, y, targetX, targetY, variant = 'normal') {
+    const isLaser = variant === 'laser';
+    const bulletType = isLaser ? 'laser_bullet' : 'enemy_bullet';
+    const bullet = this.enemyBullets.get(x, y, bulletType);
     if (!bullet) return;
     bullet.setActive(true).setVisible(true);
     bullet.body.enable = true;
     bullet.body.allowGravity = false;
-    const angle = Math.atan2(targetY - y, targetX - x);
-    bullet.setVelocity(Math.cos(angle) * ENEMY_BULLET_SPEED, Math.sin(angle) * ENEMY_BULLET_SPEED);
+    // Add inaccuracy so enemies don't always hit
+    const inaccuracy = (Math.random() - 0.5) * 0.25;
+    const angle = Math.atan2(targetY - y, targetX - x) + inaccuracy;
+    const speed = isLaser ? ENEMY_BULLET_SPEED * 1.5 : ENEMY_BULLET_SPEED;
+    bullet.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     bullet.setRotation(angle);
+    if (isLaser) bullet.setScale(2);
+    else bullet.setScale(1);
   }
 
   createEnemyBulletSpread(x, y, targetX, targetY, count, spreadDeg) {
@@ -661,6 +727,7 @@ export class GameScene extends Phaser.Scene {
     EventBus.on('touch-control', onTouch);
 
     this.events.once('shutdown', () => {
+      if (this.ambushTimer) this.ambushTimer.remove();
       EventBus.off('start-game', onStart);
       EventBus.off('restart-game', onRestart);
       EventBus.off('pause-game', onPause);

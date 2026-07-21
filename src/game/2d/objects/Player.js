@@ -3,24 +3,32 @@ import { HEROES, BULLET_SPEED, GRAVITY } from '@/game/config';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, heroKey) {
-    const useGen = scene.textures.exists('player_walk');
-    super(scene, x, y, useGen ? 'player_walk' : 'player_' + heroKey, 0);
+    const heroTexKey = 'player_walk_' + heroKey;
+    const useHeroTex = scene.textures.exists(heroTexKey);
+    const useGeneric = !useHeroTex && scene.textures.exists('player_walk');
+
+    super(scene, x, y,
+      useHeroTex ? heroTexKey : (useGeneric ? 'player_walk' : 'player_' + heroKey), 0);
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
     this.heroKey = heroKey;
     this.heroData = HEROES[heroKey];
-    this.useGen = useGen;
+    this.useGen = useHeroTex || useGeneric;
+    this.useHeroTex = useHeroTex;
 
     this.setCollideWorldBounds(true);
     this.body.setGravityY(GRAVITY);
 
-    if (useGen) {
+    if (this.useGen) {
       this.setScale(1.5);
-      this.body.setSize(28, 48, true);
+      // Body: 28x48 centered in 64x64 frame → offset (18, 8)
+      this.body.setSize(28, 48, false);
+      this.body.setOffset(18, 8);
     } else {
       this.setScale(2);
-      this.body.setSize(12, 22, true);
+      this.body.setSize(12, 22, false);
+      this.body.setOffset(5, 1);
     }
     this.setOrigin(0.5, 0.5);
     this.setDepth(5);
@@ -35,6 +43,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.muzzleFlash = null;
     this.isMoving = false;
     this.wasMoving = false;
+
+    // Name label above player
+    const labelColor = heroKey === 'fufuruco' ? '#cc8855' : '#eeeeff';
+    this.nameLabel = scene.add.text(x, y - 55, this.heroData.name, {
+      fontSize: '8px',
+      fontFamily: "'Press Start 2P', monospace",
+      color: labelColor,
+      stroke: '#000000',
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(6);
   }
 
   moveLeft() {
@@ -69,16 +87,28 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.isDucking = true;
       this.body.setVelocityX(0);
       this.isMoving = false;
-      if (this.useGen) this.body.setSize(28, 24, true);
-      else this.body.setSize(12, 12, true);
+      if (this.useGen) {
+        // Keep bottom at same position: offset_y + 24 = 8 + 48 → offset_y = 32
+        this.body.setSize(28, 24, false);
+        this.body.setOffset(18, 32);
+      } else {
+        // 12x12, keep bottom: offset_y + 12 = 1 + 22 → offset_y = 11
+        this.body.setSize(12, 12, false);
+        this.body.setOffset(5, 11);
+      }
     }
   }
 
   stand() {
     if (this.isDucking) {
       this.isDucking = false;
-      if (this.useGen) this.body.setSize(28, 48, true);
-      else this.body.setSize(12, 22, true);
+      if (this.useGen) {
+        this.body.setSize(28, 48, false);
+        this.body.setOffset(18, 8);
+      } else {
+        this.body.setSize(12, 22, false);
+        this.body.setOffset(5, 1);
+      }
     }
   }
 
@@ -131,7 +161,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.scene.tweens.add({
       targets: this,
       alpha: { from: 0.3, to: 1 },
-      duration: 80, repeat: 10,
+      duration: 100, repeat: 12,
       onComplete: () => { this.setAlpha(1); this.invincible = false; },
     });
     return true;
@@ -141,8 +171,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.health = this.maxHealth;
     this.invincible = true;
     this.isDucking = false;
-    if (this.useGen) this.body.setSize(28, 48, true);
-    else this.body.setSize(12, 22, true);
+    if (this.useGen) {
+      this.body.setSize(28, 48, false);
+      this.body.setOffset(18, 8);
+    } else {
+      this.body.setSize(12, 22, false);
+      this.body.setOffset(5, 1);
+    }
     this.setPosition(x, y);
     this.setActive(true).setVisible(true);
     this.body.enable = true;
@@ -157,11 +192,23 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   updateAnim() {
+    // Name label follows player
+    if (this.nameLabel) {
+      this.nameLabel.x = this.x;
+      this.nameLabel.y = this.y - 55;
+    }
+
     if (!this.useGen) return;
+
+    const animKey = this.useHeroTex
+      ? 'player_walk_' + this.heroKey + '_anim'
+      : 'player_walk_anim';
+    if (!this.anims.exists(animKey)) return;
+
     const onGround = this.body.blocked.down || this.body.touching.down;
     if (this.isMoving && !this.isDucking && onGround) {
       if (!this.wasMoving) {
-        this.play('player_walk_anim', true);
+        this.play(animKey, true);
         this.wasMoving = true;
       }
     } else {
@@ -174,6 +221,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   destroy(fromScene) {
+    if (this.nameLabel) this.nameLabel.destroy();
     if (this.muzzleFlash) this.muzzleFlash.destroy();
     super.destroy(fromScene);
   }
