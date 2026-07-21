@@ -3,7 +3,7 @@ import { EventBus } from '@/game/EventBus';
 import {
   GAME_WIDTH, GAME_HEIGHT, GRAVITY, BULLET_SPEED, ENEMY_BULLET_SPEED,
   WORLD_WIDTH, BOSS_WORLD_WIDTH, PALETTE, DIFFICULTIES, HEROES, LEVELS,
-  BOSS_NAMES, SUBLEVELS_PER_LEVEL,
+  BOSS_NAMES, SUBLEVELS_PER_LEVEL, ASSETS,
 } from '@/game/config';
 import { Player } from '@/game/2d/objects/Player';
 import { Enemy } from '@/game/2d/objects/Enemy';
@@ -28,6 +28,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
+    this.load.spritesheet('player_walk', ASSETS.playerWalk, { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('enemy_walk', ASSETS.enemyWalk, { frameWidth: 64, frameHeight: 64 });
+    this.load.image('alien_img', ASSETS.alien);
+    this.load.image('machine_img', ASSETS.machine);
+    this.load.image('boss_img', ASSETS.boss);
+    this.load.image('bg_jungle', ASSETS.bgJungle);
     if (!this.textures.exists('player_fufuruco')) {
       this.createTextures();
     }
@@ -54,6 +60,7 @@ export class GameScene extends Phaser.Scene {
     // --- Level setup ---
     this.phase = 'playing';
     this.isBossLevel = this.subLevelIndex === SUBLEVELS_PER_LEVEL - 1;
+    this.createAnimations();
     const level = LEVELS[this.levelIndex];
     const diff = DIFFICULTIES[this.difficulty];
 
@@ -147,6 +154,11 @@ export class GameScene extends Phaser.Scene {
     gg.fillStyle(0x888888); gg.fillRect(0, 20, 64, 2); gg.fillRect(0, 40, 64, 2);
     gg.generateTexture('ground_tile', 64, 64); gg.destroy();
 
+    // Muzzle flash
+    const mfg = this.add.graphics();
+    mfg.fillStyle(0xffff88); mfg.fillCircle(4, 4, 4);
+    mfg.fillStyle(0xffffff); mfg.fillCircle(4, 4, 2);
+    mfg.generateTexture('muzzle_flash', 8, 8); mfg.destroy();
     // Platform
     const pg = this.add.graphics();
     pg.fillStyle(0xffffff); pg.fillRect(0, 0, 96, 20);
@@ -283,9 +295,45 @@ export class GameScene extends Phaser.Scene {
     g.generateTexture(key, 48, 48); g.destroy();
   }
 
+  createAnimations() {
+    if (this.textures.exists('player_walk') && !this.anims.exists('player_walk_anim')) {
+      this.anims.create({
+        key: 'player_walk_anim',
+        frames: this.anims.generateFrameNumbers('player_walk', { start: 0, end: 3 }),
+        frameRate: 12, repeat: -1,
+      });
+    }
+    if (this.textures.exists('enemy_walk') && !this.anims.exists('enemy_walk_anim')) {
+      this.anims.create({
+        key: 'enemy_walk_anim',
+        frames: this.anims.generateFrameNumbers('enemy_walk', { start: 0, end: 3 }),
+        frameRate: 8, repeat: -1,
+      });
+    }
+  }
+
+  createHitSpark(x, y) {
+    for (let i = 0; i < 6; i++) {
+      const spark = this.add.circle(x, y, 2, 0xffff44);
+      spark.setDepth(8);
+      this.tweens.add({
+        targets: spark,
+        x: x + (Math.random() - 0.5) * 40,
+        y: y + (Math.random() - 0.5) * 40,
+        alpha: 0, scale: 0, duration: 200,
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
   // ==================== WORLD ====================
 
   createBackground(level) {
+    if (this.textures.exists('bg_jungle') && ['jungle', 'waterfall', 'alien'].includes(level.theme)) {
+      this.parallaxGenerated = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'bg_jungle');
+      this.parallaxGenerated.setOrigin(0, 0).setScrollFactor(0).setDepth(-20);
+      return;
+    }
     // Gradient texture
     const g = this.add.graphics();
     for (let y = 0; y < GAME_HEIGHT; y++) {
@@ -416,7 +464,7 @@ export class GameScene extends Phaser.Scene {
 
     const level = LEVELS[this.levelIndex];
     const diff = DIFFICULTIES[this.difficulty];
-    const baseCount = 6 + this.subLevelIndex * 2;
+    const baseCount = 10 + this.subLevelIndex * 3;
     const enemyCount = Math.floor(baseCount * diff.enemyCount);
 
     for (let i = 0; i < enemyCount; i++) {
@@ -515,6 +563,7 @@ export class GameScene extends Phaser.Scene {
   hitEnemy(bullet, enemy) {
     if (!bullet.active || !enemy.active) return;
     bullet.disableBody(true, true);
+    this.createHitSpark(bullet.x, bullet.y);
 
     const killed = enemy.takeDamage(1);
     const points = { soldier: 100, alien: 150, machine: 200, boss: 1000 };
@@ -550,6 +599,7 @@ export class GameScene extends Phaser.Scene {
 
   damagePlayer(amount) {
     if (!this.player.takeDamage(amount)) return;
+    this.cameras.main.shake(100, 0.008);
     EventBus.emit('health-changed', {
       health: Math.max(0, this.player.health),
       maxHealth: this.player.maxHealth,
@@ -669,6 +719,9 @@ export class GameScene extends Phaser.Scene {
     if (this.parallaxFar) {
       this.parallaxFar.tilePositionX = this.cameras.main.scrollX * 0.3;
     }
+    if (this.parallaxGenerated) {
+      this.parallaxGenerated.tilePositionX = this.cameras.main.scrollX;
+    }
 
     this.updatePlayer();
     this.updateEnemies();
@@ -692,7 +745,7 @@ export class GameScene extends Phaser.Scene {
     } else if (rightDown) {
       p.moveRight();
     } else {
-      p.stop();
+      p.stopMove();
     }
 
     if (jumpDown && !this.prevJumpDown) {
@@ -709,6 +762,7 @@ export class GameScene extends Phaser.Scene {
     if (shootDown) {
       p.shoot(this, this.playerBullets);
     }
+    p.updateAnim();
   }
 
   updateEnemies() {

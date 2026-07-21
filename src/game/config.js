@@ -64,3 +64,12 @@ export const BOSS_NAMES = [
 ];
 
 export const SUBLEVELS_PER_LEVEL = 8;
+
+export const ASSETS = {
+  playerWalk: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/afed22694_gameimage_a33e251c.png',
+  enemyWalk: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/434cb6864_gameimage_4f64b0e6.png',
+  alien: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/defc50c71_gameimage_4e1bab87.png',
+  machine: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/cd0e90ee2_gameimage_a45aff20.png',
+  boss: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/ebb182a45_gameimage_14aa302d.png',
+  bgJungle: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/ffbde0eab_gamebg_504f6753.png',
+};
