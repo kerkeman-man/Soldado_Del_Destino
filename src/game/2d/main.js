@@ -4,9 +4,17 @@ import { GameScene } from '@/game/2d/scenes/GameScene';
 const config = {
   type: Phaser.AUTO,
   width: 1024,
-  height: 768,
+  height: 576,
   parent: 'game-container',
-  backgroundColor: '#0f172a',
+  pixelArt: true,
+  backgroundColor: '#0a0a0a',
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: 800 },
+      debug: false
+    }
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH

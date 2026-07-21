@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "level_reached": {
+      "type": "number",
+      "description": "Highest level reached (1-10)"
+    },
+    "sublevel_reached": {
+      "type": "number",
+      "description": "Highest sub-level reached (1-8)"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "description": "Difficulty played"
+    },
+    "hero": {
+      "type": "string",
+      "enum": [
+        "fufuruco",
+        "lulo"
+      ],
+      "description": "Hero used"
+    },
+    "high_score": {
+      "type": "number",
+      "description": "Highest score achieved"
+    }
+  },
+  "name": "GameProgress"
+}
