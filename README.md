@@ -28,6 +28,12 @@ VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
 
 Run the app: `npm run dev`
 
+**GitHub Pages**
+
+This repo is configured to deploy from `main` with GitHub Actions. The build uses `VITE_BASE_PATH` so Vite emits assets under the project subpath on Pages.
+
+If you need a manual preview, run `VITE_BASE_PATH=/Soldado_Del_Destino/ npm run build` before publishing.
+
 **Game layer — 2D or 3D**
 
 This template ships two game flavors. 2D is active by default and mounted on `/`. The 3D flavor lives in `src/game/3d` and adds zero bytes to the bundle until you switch to it. Both starters are intentionally minimal: add scenes, assets, and React UI only when building a specific game.
