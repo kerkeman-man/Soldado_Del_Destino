@@ -3,6 +3,7 @@ import { GameContainer } from '@/components/game/GameContainer';
 import { EventBus } from '@/game/EventBus';
 import { base44 } from '@/api/base44Client';
 import { HEROES, DIFFICULTIES, LEVELS, SUBLEVELS_PER_LEVEL } from '@/game/config';
+import { audio } from '@/game/audio/SoundEngine';
 
 export default function GamePage() {
   const [phase, setPhase] = useState('menu');
@@ -109,6 +110,9 @@ export default function GamePage() {
   };
 
   const startGame = useCallback((levelIdx = 0, subIdx = 0, scoreVal = 0, livesVal = null) => {
+    audio.init();
+    audio.startBGM();
+    setPhase('playing');
     const lv = livesVal ?? DIFFICULTIES[difficulty].playerLives;
     EventBus.emit('start-game', {
       levelIndex: levelIdx, subLevelIndex: subIdx,

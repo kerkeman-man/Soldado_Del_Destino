@@ -1,33 +1,49 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import StartGame from '@/game/2d/main';
 
+// Module-level singleton — survives React StrictMode's double-invoke
+let _phaserInstance = null;
+
+function destroyExisting() {
+  if (_phaserInstance) {
+    try {
+      _phaserInstance.destroy(true);
+    } catch (_) {}
+    _phaserInstance = null;
+  }
+  // Also nuke any leftover canvas nodes aggressively
+  const c = document.getElementById('game-container');
+  if (c) {
+    c.innerHTML = '';
+  }
+}
+
 /**
- * 2D (Phaser) flavor of the engine contract: mounts the Phaser game into the
- * #game-container div rendered by GameContainer and tears it down on unmount.
- * Renders no DOM of its own.
- *
- * @param {{ onReady?: (game: import('phaser').Game) => void }} props
+ * 2D (Phaser) flavor of the engine contract. Uses a module-level singleton
+ * so that React 18 StrictMode double-effect never creates two Phaser instances.
  */
 export default function Game({ onReady }) {
-  const gameRef = useRef(null);
+  const readyCalled = useRef(false);
 
-  useLayoutEffect(() => {
-    if (!gameRef.current) {
-      // The id must match the div rendered by GameContainer.
-      gameRef.current = StartGame('game-container');
-      if (typeof onReady === 'function') {
-        onReady(gameRef.current);
-      }
+  useEffect(() => {
+    // Always wipe any previous instance first
+    destroyExisting();
+
+    const instance = StartGame('game-container');
+    _phaserInstance = instance;
+
+    if (typeof onReady === 'function' && !readyCalled.current) {
+      readyCalled.current = true;
+      onReady(instance);
     }
 
     return () => {
-      if (gameRef.current) {
-        gameRef.current.destroy(true);
-        gameRef.current = null;
-      }
+      destroyExisting();
+      readyCalled.current = false;
     };
-    // Mount-once effect; onReady is intentionally captured at mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return null;
 }
+

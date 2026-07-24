@@ -31,12 +31,17 @@ export const PALETTE = {
   boss: {
     body: 0x884444, dark: 0x442222, light: 0xaa6666, core: 0xff0000, spike: 0x664422, eye: 0xffff00,
   },
+  items: {
+    capsule: 0x88bbff, capsuleDark: 0x3366cc,
+    weaponS: 0xff2222, weaponM: 0xffff22, weaponL: 0x2222ff,
+    box: 0xcccccc
+  },
 };
 
 export const DIFFICULTIES = {
   easy:   { name: 'Fácil',   enemyHealth: 1, enemySpeed: 50,  enemyFireRate: 2500, enemyDamage: 1, playerLives: 5, bossHealth: 20, enemyCount: 0.7 },
-  medium: { name: 'Medio',   enemyHealth: 2, enemySpeed: 80,  enemyFireRate: 1500, enemyDamage: 1, playerLives: 3, bossHealth: 35, enemyCount: 1.0 },
-  hard:   { name: 'Difícil', enemyHealth: 3, enemySpeed: 110, enemyFireRate: 1000, enemyDamage: 2, playerLives: 1, bossHealth: 50, enemyCount: 1.3 },
+  medium: { name: 'Medio',   enemyHealth: 1, enemySpeed: 80,  enemyFireRate: 1500, enemyDamage: 1, playerLives: 3, bossHealth: 35, enemyCount: 1.0 },
+  hard:   { name: 'Difícil', enemyHealth: 2, enemySpeed: 110, enemyFireRate: 1000, enemyDamage: 2, playerLives: 1, bossHealth: 50, enemyCount: 1.3 },
 };
 
 export const HEROES = {
@@ -67,7 +72,7 @@ export const SUBLEVELS_PER_LEVEL = 8;
 
 export const ASSETS = {
   playerWalk: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/afed22694_gameimage_a33e251c.png',
-  playerWalkFufuruco: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/a3aa02214_gameimage_e6b3fe11.png',
+  playerWalkFufuruco: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/afed22694_gameimage_a33e251c.png',
   playerWalkLulo: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/a3f5ed758_gameimage_b599d8c2.png',
   enemyWalk: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/434cb6864_gameimage_4f64b0e6.png',
   alien: 'https://media.base44.com/images/public/6a5f8e63c3d86b1e8ad92c69/defc50c71_gameimage_4e1bab87.png',

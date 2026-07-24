@@ -1,5 +1,5 @@
 {
-  "name": "untitled",
+  "name": "Soldados del Destino",
   "site": {
     "installCommand": "npm install",
     "buildCommand": "npm run build",

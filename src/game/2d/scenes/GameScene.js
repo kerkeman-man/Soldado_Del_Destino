@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { EventBus } from '@/game/EventBus';
 import {
-  GAME_WIDTH, GAME_HEIGHT, GRAVITY, BULLET_SPEED, ENEMY_BULLET_SPEED,
-  WORLD_WIDTH, BOSS_WORLD_WIDTH, PALETTE, DIFFICULTIES, HEROES, LEVELS,
+  GAME_WIDTH, GAME_HEIGHT,
+  WORLD_WIDTH, BOSS_WORLD_WIDTH, PALETTE, DIFFICULTIES, LEVELS,
   BOSS_NAMES, SUBLEVELS_PER_LEVEL, ASSETS,
 } from '@/game/config';
 import { Player } from '@/game/2d/objects/Player';
 import { Enemy } from '@/game/2d/objects/Enemy';
+import { audio } from '@/game/audio/SoundEngine';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -28,17 +29,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.spritesheet('player_walk', ASSETS.playerWalk, { frameWidth: 64, frameHeight: 64 });
+    this.load.on('loaderror', () => {}); // silence load errors silently
+    // Load official 16-bit Super Contra 64x64 spritesheets
     this.load.spritesheet('player_walk_fufuruco', ASSETS.playerWalkFufuruco, { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('player_walk_lulo', ASSETS.playerWalkLulo, { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('player_walk', ASSETS.playerWalk, { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('enemy_walk', ASSETS.enemyWalk, { frameWidth: 64, frameHeight: 64 });
     this.load.image('alien_img', ASSETS.alien);
     this.load.image('machine_img', ASSETS.machine);
     this.load.image('boss_img', ASSETS.boss);
     this.load.image('bg_jungle', ASSETS.bgJungle);
-    if (!this.textures.exists('player_fufuruco')) {
+
+    // Fallback texture generation if needed
+    this.load.once('complete', () => {
       this.createTextures();
-    }
+    });
   }
 
   create() {
@@ -79,6 +84,12 @@ export class GameScene extends Phaser.Scene {
     // Platforms
     this.createPlatforms();
 
+    // Items and Capsules
+    this.createItems();
+
+    // Cover (sandbags, ramps)
+    this.createCover();
+
     // Player
     this.createPlayer();
 
@@ -92,12 +103,17 @@ export class GameScene extends Phaser.Scene {
     // Collisions
     this.setupCollisions();
 
+    // Items logic update (part of main update later, handled by physics mostly)
+    
     // Controls
     this.setupControls();
 
     // Camera
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
     this.cameras.main.setFollowOffset(-150, 0);
+
+    // Audio BGM
+    audio.startBGM();
 
     // Emit init data to React
     EventBus.emit('current-scene-ready', this);
@@ -136,6 +152,13 @@ export class GameScene extends Phaser.Scene {
     this.createMachineTexture('enemy_machine', PALETTE.machine);
     this.createBossTexture('enemy_boss', PALETTE.boss);
 
+    // Generate walk animation spritesheets locally (4 frames, 22x24 each)
+    // so animations never depend on external URLs
+    this.createWalkSpritesheet('player_walk_fufuruco', PALETTE.fufuruco, false);
+    this.createWalkSpritesheet('player_walk_lulo', PALETTE.lulo, false);
+    this.createWalkSpritesheet('player_walk', PALETTE.fufuruco, false); // fallback
+    this.createWalkSpritesheet('enemy_walk', PALETTE.soldier, true);
+
     // Player bullet
     const pbg = this.add.graphics();
     pbg.fillStyle(0xffff44); pbg.fillRect(0, 0, 10, 4);
@@ -173,6 +196,82 @@ export class GameScene extends Phaser.Scene {
     pg.fillStyle(0xcccccc); pg.fillRect(0, 0, 96, 4);
     pg.fillStyle(0x888888); pg.fillRect(0, 16, 96, 4);
     pg.generateTexture('platform', 96, 20); pg.destroy();
+
+    this.createItemTextures();
+  }
+
+  createItemTextures() {
+    // === CAPSULE: classic Contra pill with wings ===
+    const cg = this.add.graphics();
+    // Wings (left)
+    cg.fillStyle(0xffffff, 0.9);
+    cg.fillTriangle(0, 12, 10, 6, 10, 18);
+    cg.fillStyle(0xccddff, 0.7);
+    cg.fillTriangle(2, 12, 10, 8, 10, 16);
+    // Wings (right)
+    cg.fillStyle(0xffffff, 0.9);
+    cg.fillTriangle(40, 12, 30, 6, 30, 18);
+    cg.fillStyle(0xccddff, 0.7);
+    cg.fillTriangle(38, 12, 30, 8, 30, 16);
+    // Body oval
+    cg.fillStyle(0x1144cc);
+    cg.fillEllipse(20, 12, 22, 16);
+    cg.fillStyle(0x3366ff);
+    cg.fillEllipse(20, 10, 18, 12);
+    // Shine
+    cg.fillStyle(0xaaccff, 0.6);
+    cg.fillEllipse(16, 8, 8, 5);
+    // Red dot center
+    cg.fillStyle(0xff2222);
+    cg.fillCircle(20, 12, 4);
+    cg.fillStyle(0xff8888);
+    cg.fillCircle(19, 11, 2);
+    cg.generateTexture('capsule', 40, 24); cg.destroy();
+
+    // === WEAPON DROP BOX ===
+    const drawBox = (key, color, letter) => {
+      const bg = this.add.graphics();
+      // Box shadow
+      bg.fillStyle(0x000000, 0.4); bg.fillRect(3, 3, 26, 26);
+      // Box body
+      bg.fillStyle(0x333333); bg.fillRect(0, 0, 26, 26);
+      bg.fillStyle(color); bg.fillRect(2, 2, 22, 22);
+      // Shine top
+      bg.fillStyle(0xffffff, 0.3); bg.fillRect(2, 2, 22, 5);
+      // Border
+      bg.lineStyle(2, 0xffffff, 0.8);
+      bg.strokeRect(2, 2, 22, 22);
+      bg.generateTexture(key, 28, 28); bg.destroy();
+    };
+    drawBox('weapon_S', 0xdd2200, 'S');
+    drawBox('weapon_M', 0xddcc00, 'M');
+    drawBox('weapon_L', 0x0033dd, 'L');
+
+    // === SPREAD BULLET ===
+    const sg = this.add.graphics();
+    sg.fillStyle(0xff3300); sg.fillCircle(5, 5, 5);
+    sg.fillStyle(0xff9966); sg.fillCircle(4, 4, 2);
+    sg.generateTexture('spread_bullet', 10, 10); sg.destroy();
+
+    // === SANDBAG TEXTURE ===
+    const sbg = this.add.graphics();
+    // Bag body
+    sbg.fillStyle(0x8b7355); sbg.fillRect(0, 0, 32, 20);
+    // Tie in middle
+    sbg.fillStyle(0x6b5335); sbg.fillRect(14, 0, 4, 20);
+    // Texture lines
+    sbg.fillStyle(0x7a6345, 0.5);
+    sbg.fillRect(2, 4, 10, 3); sbg.fillRect(2, 11, 10, 3);
+    sbg.fillRect(20, 4, 10, 3); sbg.fillRect(20, 11, 10, 3);
+    // Top shade
+    sbg.fillStyle(0xaa9977, 0.4); sbg.fillRect(0, 0, 32, 4);
+    sbg.generateTexture('sandbag', 32, 20); sbg.destroy();
+
+    // === RAMP TEXTURE ===
+    const rg = this.add.graphics();
+    rg.fillStyle(0x556633); rg.fillTriangle(0, 32, 64, 32, 64, 0);
+    rg.fillStyle(0x667744, 0.5); rg.fillTriangle(0, 32, 64, 32, 64, 6);
+    rg.generateTexture('ramp', 64, 32); rg.destroy();
   }
 
   createPlayerTexture(key, p) {
@@ -201,6 +300,84 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(p.boots); g.fillRect(3, 22, 5, 2); g.fillRect(10, 22, 5, 2);
     g.generateTexture(key, 22, 24); g.destroy();
   }
+
+  /**
+   * Generates a 4-frame walk spritesheet texture (256×64, 64px frame) using Graphics as a fallback.
+   */
+  createWalkSpritesheet(key, p, isSoldier) {
+    const FW = 64, FH = 64, FRAMES = 4;
+
+    if (this.textures.exists(key)) {
+      return;
+    }
+
+    const g = this.add.graphics();
+
+    const drawFrame = (frameIdx, legPhase) => {
+      const ox = frameIdx * FW;
+
+      // --- Helmet ---
+      g.fillStyle(p.helmet);
+      g.fillRect(ox + 22, 10, 20, 10); g.fillRect(ox + 18, 14, 28, 6);
+
+      // --- Face ---
+      g.fillStyle(p.skin); g.fillRect(ox + 22, 20, 20, 12);
+      g.fillStyle(p.bandana); g.fillRect(ox + 22, 22, 20, 3);
+      const eyeColor = isSoldier ? 0xff0000 : 0x222222;
+      g.fillStyle(eyeColor); g.fillRect(ox + 26, 26, 3, 3); g.fillRect(ox + 35, 26, 3, 3);
+
+      // --- Body ---
+      g.fillStyle(p.suit); g.fillRect(ox + 18, 32, 28, 16);
+      g.fillStyle(p.helmet); g.fillRect(ox + 28, 34, 8, 8);
+
+      // --- Arms ---
+      const armY = (frameIdx % 2 === 0) ? 34 : 32;
+      g.fillStyle(p.suit);
+      g.fillRect(ox + 10, armY, 8, 12);
+      g.fillRect(ox + 46, armY, 8, 12);
+
+      // --- Gun ---
+      g.fillStyle(p.gun || 0x888888);
+      g.fillRect(ox + 46, armY + 2, 14, 4);
+      g.fillRect(ox + 56, armY, 4, 8);
+
+      // --- Belt ---
+      g.fillStyle(0x333333); g.fillRect(ox + 18, 48, 28, 3);
+
+      // --- Legs walk cycle ---
+      g.fillStyle(p.legs || p.suit);
+      if (legPhase === 0) {
+        g.fillRect(ox + 20, 51, 10, 10); g.fillRect(ox + 34, 51, 10, 10);
+        g.fillStyle(p.boots || 0x111111);
+        g.fillRect(ox + 18, 61, 12, 3); g.fillRect(ox + 34, 61, 12, 3);
+      } else if (legPhase === 1) { // left forward
+        g.fillRect(ox + 16, 51, 10, 9); g.fillRect(ox + 36, 52, 10, 9);
+        g.fillStyle(p.boots || 0x111111);
+        g.fillRect(ox + 14, 60, 14, 4); g.fillRect(ox + 36, 61, 10, 3);
+      } else { // right forward
+        g.fillRect(ox + 20, 52, 10, 9); g.fillRect(ox + 34, 51, 10, 9);
+        g.fillStyle(p.boots || 0x111111);
+        g.fillRect(ox + 20, 61, 10, 3); g.fillRect(ox + 34, 60, 14, 4);
+      }
+    };
+
+    drawFrame(0, 0);
+    drawFrame(1, 1);
+    drawFrame(2, 0);
+    drawFrame(3, 2);
+
+    g.generateTexture(key, FW * FRAMES, FH);
+    g.destroy();
+
+    // Register frame offsets
+    const tex = this.textures.get(key);
+    if (tex) {
+      for (let i = 0; i < FRAMES; i++) {
+        tex.add(i, 0, i * FW, 0, FW, FH);
+      }
+    }
+  }
+
 
   createSoldierTexture(key, p) {
     const g = this.add.graphics();
@@ -304,31 +481,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   createAnimations() {
-    ['fufuruco', 'lulo'].forEach(hero => {
-      const texKey = 'player_walk_' + hero;
-      const animKey = texKey + '_anim';
+    const makeAnim = (animKey, texKey) => {
       if (this.textures.exists(texKey) && !this.anims.exists(animKey)) {
+        const tex = this.textures.get(texKey);
+        const imgW = tex.source[0] ? tex.source[0].width : 256;
+        const frameWidth = imgW >= 128 ? 64 : 22;
+        const totalFrames = Math.floor(imgW / frameWidth);
+        const frameEnd = Math.max(0, totalFrames - 1);
         this.anims.create({
           key: animKey,
-          frames: this.anims.generateFrameNumbers(texKey, { start: 0, end: 3 }),
-          frameRate: 12, repeat: -1,
+          frames: this.anims.generateFrameNumbers(texKey, { start: 0, end: frameEnd }),
+          frameRate: 10, repeat: -1,
         });
       }
-    });
-    if (this.textures.exists('player_walk') && !this.anims.exists('player_walk_anim')) {
-      this.anims.create({
-        key: 'player_walk_anim',
-        frames: this.anims.generateFrameNumbers('player_walk', { start: 0, end: 3 }),
-        frameRate: 12, repeat: -1,
-      });
-    }
-    if (this.textures.exists('enemy_walk') && !this.anims.exists('enemy_walk_anim')) {
-      this.anims.create({
-        key: 'enemy_walk_anim',
-        frames: this.anims.generateFrameNumbers('enemy_walk', { start: 0, end: 3 }),
-        frameRate: 8, repeat: -1,
-      });
-    }
+    };
+    makeAnim('player_walk_fufuruco_anim', 'player_walk_fufuruco');
+    makeAnim('player_walk_lulo_anim', 'player_walk_lulo');
+    makeAnim('player_walk_anim', 'player_walk');
+    makeAnim('enemy_walk_anim', 'enemy_walk');
   }
 
   createHitSpark(x, y) {
@@ -348,12 +518,7 @@ export class GameScene extends Phaser.Scene {
   // ==================== WORLD ====================
 
   createBackground(level) {
-    if (this.textures.exists('bg_jungle') && ['jungle', 'waterfall', 'alien'].includes(level.theme)) {
-      this.parallaxGenerated = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'bg_jungle');
-      this.parallaxGenerated.setOrigin(0, 0).setScrollFactor(0).setDepth(-20);
-      return;
-    }
-    // Gradient texture
+    // 16-bit Crisp Procedural Super Contra Parallax Background (Zero AI ghosts!)
     const g = this.add.graphics();
     for (let y = 0; y < GAME_HEIGHT; y++) {
       const t = y / GAME_HEIGHT;
@@ -364,24 +529,17 @@ export class GameScene extends Phaser.Scene {
     g.generateTexture('bg_grad', GAME_WIDTH, GAME_HEIGHT);
     g.destroy();
 
-    // Place gradient across world
     for (let x = 0; x < this.worldWidth; x += GAME_WIDTH) {
       this.add.image(x, 0, 'bg_grad').setOrigin(0, 0).setDepth(-20);
     }
 
-    // Parallax far layer
+    // Parallax far mountains and jungle canopy
     const fg = this.add.graphics();
-    for (let i = 0; i < 40; i++) {
-      const x = (i / 40) * GAME_WIDTH * 2;
-      const h = 60 + (i * 37) % 120;
-      fg.fillStyle(this.lerpColor(level.bgBottom, level.bgTop, 0.3), 0.5);
-      if (level.theme === 'jungle' || level.theme === 'alien' || level.theme === 'waterfall') {
-        fg.fillTriangle(x, GAME_HEIGHT - 80, x + 50, GAME_HEIGHT - 80 - h, x + 100, GAME_HEIGHT - 80);
-      } else if (level.theme === 'snow') {
-        fg.fillTriangle(x, GAME_HEIGHT - 80, x + 60, GAME_HEIGHT - 80 - h, x + 120, GAME_HEIGHT - 80);
-      } else {
-        fg.fillRect(x, GAME_HEIGHT - 80 - h, 50, h);
-      }
+    for (let i = 0; i < 50; i++) {
+      const x = (i / 50) * GAME_WIDTH * 2;
+      const h = 80 + (i * 47) % 140;
+      fg.fillStyle(0x0f2b18, 0.6);
+      fg.fillTriangle(x, GAME_HEIGHT - 80, x + 60, GAME_HEIGHT - 80 - h, x + 120, GAME_HEIGHT - 80);
     }
     fg.generateTexture('parallax_far', GAME_WIDTH * 2, GAME_HEIGHT);
     fg.destroy();
@@ -389,40 +547,95 @@ export class GameScene extends Phaser.Scene {
     this.parallaxFar = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'parallax_far');
     this.parallaxFar.setOrigin(0, 0).setScrollFactor(0).setDepth(-15);
 
-    // Mid layer decorations
+    // Zone decor: 
+    // Zone 1 (0-800): Jungle trees & Vines
+    // Zone 2 (800-1400): River waterfall background & wooden pylons
+    // Zone 3 (1400-2200): Cavern rocks, stalactites & glowing crystals
+    // Zone 4 (2200-3200): Military fortress walls, steel girders & searchlights
     const mg = this.add.graphics();
     mg.setDepth(-10);
-    for (let i = 0; i < 60; i++) {
-      const x = Math.random() * this.worldWidth;
-      const h = 40 + Math.random() * 100;
-      if (level.theme === 'jungle' || level.theme === 'alien' || level.theme === 'waterfall') {
-        mg.fillStyle(0x1a2a0a, 0.6);
-        mg.fillRect(x, GAME_HEIGHT - 80 - h, 10, h);
-        mg.fillStyle(0x0a1a0a, 0.5);
-        mg.fillCircle(x + 5, GAME_HEIGHT - 80 - h, 18 + Math.random() * 15);
-      } else if (level.theme === 'base' || level.theme === 'fortress' || level.theme === 'tunnel') {
-        mg.fillStyle(0x333344, 0.5);
-        mg.fillRect(x, GAME_HEIGHT - 80 - h, 45, h);
-        mg.fillStyle(0x555566, 0.4);
-        mg.fillRect(x, GAME_HEIGHT - 80 - h, 45, 3);
-      } else if (level.theme === 'snow') {
-        mg.fillStyle(0x667788, 0.4);
-        mg.fillTriangle(x, GAME_HEIGHT - 80, x + 40, GAME_HEIGHT - 80 - h, x + 80, GAME_HEIGHT - 80);
-      } else {
-        mg.fillStyle(this.lerpColor(level.bgBottom, 0x000000, 0.3), 0.5);
-        mg.fillRect(x, GAME_HEIGHT - 80 - h, 25, h);
-      }
+
+    // Zone 1: Jungle Trees
+    for (let x = 50; x < 800; x += 120) {
+      mg.fillStyle(0x1a3311, 0.8);
+      mg.fillRect(x + 20, GAME_HEIGHT - 320, 24, 240); // trunk
+      mg.fillStyle(0x0e2608, 0.9);
+      mg.fillCircle(x + 32, GAME_HEIGHT - 320, 60); // leaves top
+    }
+
+    // Zone 2: River Waterfall background
+    mg.fillStyle(0x1a3a4a, 0.7);
+    mg.fillRect(800, 100, 600, GAME_HEIGHT - 100);
+    for (let wx = 820; wx < 1380; wx += 40) {
+      mg.fillStyle(0x3a6a8a, 0.4);
+      mg.fillRect(wx, 120, 12, GAME_HEIGHT - 160); // waterfall streams
+    }
+
+    // Zone 3: Cavern stalactites
+    mg.fillStyle(0x2a2228, 0.9);
+    mg.fillRect(1400, 0, 800, GAME_HEIGHT);
+    for (let cx = 1420; cx < 2180; cx += 80) {
+      mg.fillStyle(0x4a3a48, 0.9);
+      mg.fillTriangle(cx, 0, cx + 25, 120 + (cx % 50), cx + 50, 0); // stalactites
+      // Glowing crystal detail
+      mg.fillStyle(0x00ffff, 0.7);
+      mg.fillRect(cx + 30, GAME_HEIGHT - 180 - (cx % 90), 8, 16);
+    }
+
+    // Zone 4: Military Fortress
+    mg.fillStyle(0x1e1e24, 0.95);
+    mg.fillRect(2200, 0, 1000, GAME_HEIGHT);
+    for (let fx = 2220; fx < 3180; fx += 140) {
+      mg.fillStyle(0x3a3a44, 0.8);
+      mg.fillRect(fx, 60, 40, GAME_HEIGHT - 140); // pillars
+      mg.fillStyle(0xdd2222, 0.8);
+      mg.fillCircle(fx + 20, 50, 8); // red warning lights
     }
   }
 
   createGround(level) {
     this.ground = this.physics.add.staticGroup();
-    for (let x = 0; x < this.worldWidth; x += 64) {
+
+    // Zone 1: Jungle dirt floor (0 - 800)
+    for (let x = 0; x < 800; x += 64) {
       const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
-      tile.setTint(level.ground);
+      tile.setTint(0x2d5a2d);
       tile.setDepth(-5);
     }
-    // Boss arena floor extends fully
+
+    // Zone 2: River gap (800 - 1400) - Water floor underneath, wooden bridge ground above
+    // Water visual underneath
+    const waterBg = this.add.graphics();
+    waterBg.fillStyle(0x114488, 0.8);
+    waterBg.fillRect(800, GAME_HEIGHT - 80, 600, 80);
+    waterBg.fillStyle(0x3388ee, 0.5);
+    for (let wx = 800; wx < 1400; wx += 30) {
+      waterBg.fillRect(wx, GAME_HEIGHT - 70, 20, 4);
+      waterBg.fillRect(wx + 10, GAME_HEIGHT - 40, 15, 3);
+    }
+    waterBg.setDepth(-6);
+
+    // Wooden bridge floor across river
+    for (let x = 800; x < 1400; x += 64) {
+      const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'platform');
+      tile.setTint(0x996633);
+      tile.setDepth(-5);
+    }
+
+    // Zone 3: Cavern stone floor (1400 - 2200)
+    for (let x = 1400; x < 2200; x += 64) {
+      const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
+      tile.setTint(0x5a4a5a);
+      tile.setDepth(-5);
+    }
+
+    // Zone 4: Military Steel grid floor (2200 - 3200)
+    for (let x = 2200; x < this.worldWidth; x += 64) {
+      const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
+      tile.setTint(0x4a4a5a);
+      tile.setDepth(-5);
+    }
+
     if (this.isBossLevel) {
       this.add.rectangle(this.worldWidth / 2, GAME_HEIGHT - 80, this.worldWidth, 80, level.ground, 0.3)
         .setDepth(-6).setScrollFactor(1);
@@ -433,10 +646,19 @@ export class GameScene extends Phaser.Scene {
     this.platforms = this.physics.add.staticGroup();
     if (this.isBossLevel) return;
 
+    // Super Contra Multi-Tiered Layout: Watchtowers, Stepped Stairs, Elevated Bridges, Cave Ledges
     const positions = [
-      { x: 350, y: 465 }, { x: 650, y: 450 }, { x: 950, y: 440 },
-      { x: 1300, y: 460 }, { x: 1650, y: 445 }, { x: 2000, y: 465 },
-      { x: 2350, y: 450 }, { x: 2700, y: 460 },
+      // Zone 1: Watchtower 1 (x: 280, 450)
+      { x: 280, y: 460 }, { x: 280, y: 350 }, { x: 450, y: 440 }, { x: 620, y: 460 },
+
+      // Zone 2: Elevated River Bridge Tiers & Sniping Posts
+      { x: 860, y: 430 }, { x: 1040, y: 340 }, { x: 1220, y: 430 },
+
+      // Zone 3: Cavern Stepped Rock Ledges (Stairs up/down)
+      { x: 1480, y: 460 }, { x: 1620, y: 380 }, { x: 1760, y: 300 }, { x: 1900, y: 380 }, { x: 2040, y: 460 },
+
+      // Zone 4: Fortress Gantry Walkways & Searchlight Towers
+      { x: 2300, y: 440 }, { x: 2480, y: 340 }, { x: 2660, y: 440 }, { x: 2840, y: 340 }, { x: 3000, y: 440 },
     ];
 
     positions.forEach(p => {
@@ -444,7 +666,52 @@ export class GameScene extends Phaser.Scene {
         const plat = this.platforms.create(p.x, p.y, 'platform');
         plat.setTint(0x886644);
         plat.setDepth(-3);
+        // One-way collision (jump through from bottom)
+        plat.body.checkCollision.down = false;
+        plat.body.checkCollision.left = false;
+        plat.body.checkCollision.right = false;
       }
+    });
+  }
+
+  createCover() {
+    if (this.isBossLevel) return;
+    this.cover = this.physics.add.staticGroup();
+
+    // Sandbags & Watchtower Posts
+    const sandbagSpots = [
+      { x: 280, count: 2 }, { x: 550, count: 3 }, { x: 920, count: 2 },
+      { x: 1300, count: 3 }, { x: 1650, count: 2 }, { x: 2000, count: 3 },
+      { x: 2400, count: 3 }, { x: 2850, count: 4 },
+    ];
+
+    sandbagSpots.forEach(({ x, count }) => {
+      if (x >= this.worldWidth - 200) return;
+      for (let i = 0; i < count; i++) {
+        const sb = this.cover.create(x + i * 30, GAME_HEIGHT - 70, 'sandbag');
+        sb.setTint(0xaa9966);
+        sb.setDepth(2);
+        if (i < count - 1) {
+          const sb2 = this.cover.create(x + i * 30 + 15, GAME_HEIGHT - 90, 'sandbag');
+          sb2.setTint(0x998855);
+          sb2.setDepth(2);
+        }
+      }
+
+      this.time.delayedCall(500, () => {
+        if (this.phase !== 'playing') return;
+        const soldierX = x + count * 30 + 20;
+        if (soldierX < this.worldWidth - 100) {
+          this.spawnEnemy(soldierX, GAME_HEIGHT - 120, 'soldier', Math.random() < 0.4 ? 'laser' : 'normal');
+        }
+      });
+    });
+
+    const rampSpots = [500, 1150, 1800, 2600];
+    rampSpots.forEach(rx => {
+      if (rx >= this.worldWidth - 200) return;
+      const ramp = this.cover.create(rx, GAME_HEIGHT - 56, 'ramp');
+      ramp.setDepth(2);
     });
   }
 
@@ -458,13 +725,15 @@ export class GameScene extends Phaser.Scene {
   createBullets() {
     this.playerBullets = this.physics.add.group({
       classType: Phaser.Physics.Arcade.Image,
-      maxSize: 30,
+      maxSize: 60,
       runChildUpdate: false,
+      allowGravity: false,
     });
     this.enemyBullets = this.physics.add.group({
       classType: Phaser.Physics.Arcade.Image,
-      maxSize: 60,
+      maxSize: 120,
       runChildUpdate: false,
+      allowGravity: false,
     });
   }
 
@@ -475,6 +744,11 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  createItems() {
+    this.capsules = this.physics.add.group({ allowGravity: false });
+    this.weaponItems = this.physics.add.group({ bounceY: 0.4, dragX: 100 });
+  }
+
   spawnEnemies() {
     if (this.isBossLevel) {
       this.spawnBoss();
@@ -483,16 +757,28 @@ export class GameScene extends Phaser.Scene {
 
     const level = LEVELS[this.levelIndex];
     const diff = DIFFICULTIES[this.difficulty];
-    const baseCount = 14 + this.subLevelIndex * 2;
+    const baseCount = 20 + this.subLevelIndex * 3; // more enemies from the start
     const enemyCount = Math.floor(baseCount * diff.enemyCount);
 
+    // Watchtower Snipers placed strategically at high platforms
+    const sniperPositions = [
+      { x: 280, y: 300, type: 'soldier', variant: 'laser' },
+      { x: 1040, y: 290, type: 'soldier', variant: 'fast' },
+      { x: 1760, y: 250, type: 'alien', variant: 'normal' },
+      { x: 2480, y: 290, type: 'machine', variant: 'normal' },
+      { x: 2840, y: 290, type: 'soldier', variant: 'laser' },
+    ];
+    sniperPositions.forEach(sp => {
+      this.spawnEnemy(sp.x, sp.y, sp.type, sp.variant);
+    });
+
     for (let i = 0; i < enemyCount; i++) {
-      const fromBehind = Math.random() < 0.15;
+      const fromBehind = Math.random() < 0.08;
       let x;
       if (fromBehind) {
         x = Math.max(20, 20 + Math.random() * 60);
       } else {
-        x = 450 + (i / enemyCount) * (this.worldWidth - 600) + Math.random() * 80;
+        x = 350 + (i / enemyCount) * (this.worldWidth - 500) + Math.random() * 80;
       }
 
       const type = level.enemyTypes[Math.floor(Math.random() * level.enemyTypes.length)];
@@ -509,11 +795,21 @@ export class GameScene extends Phaser.Scene {
       this.spawnEnemy(x, y, type, variant);
     }
 
-    // Periodic ambush spawns from screen edges
+    // Periodic ambush spawns — más frecuentes y dobles a veces
     this.ambushTimer = this.time.addEvent({
-      delay: 6000 + Math.random() * 3000,
+      delay: 3500 + Math.random() * 2000,
       callback: this.spawnAmbush,
       callbackScope: this,
+      loop: true,
+    });
+    // Extra capsule timer every 12 seconds
+    this.capsuleTimer = this.time.addEvent({
+      delay: 12000,
+      callback: () => {
+        if (this.phase !== 'playing') return;
+        const camCX = this.cameras.main.scrollX + GAME_WIDTH / 2;
+        this.spawnCapsule(camCX + 400, 140 + Math.random() * 80, -90);
+      },
       loop: true,
     });
   }
@@ -525,6 +821,13 @@ export class GameScene extends Phaser.Scene {
     const camRight = camLeft + GAME_WIDTH;
     const fromLeft = Math.random() > 0.5;
     const x = fromLeft ? camLeft - 30 : camRight + 30;
+
+    // 20% chance to spawn a capsule
+    if (Math.random() < 0.20) {
+      this.spawnCapsule(x, 140 + Math.random() * 120, fromLeft ? 90 : -90);
+      return;
+    }
+
     const type = level.enemyTypes[Math.floor(Math.random() * level.enemyTypes.length)];
     let variant = 'normal';
     if (type === 'soldier') {
@@ -534,6 +837,22 @@ export class GameScene extends Phaser.Scene {
     }
     const y = type === 'alien' ? GAME_HEIGHT - 200 : GAME_HEIGHT - 120;
     this.spawnEnemy(x, y, type, variant);
+
+    // 30% chance of double ambush (two enemies at once)
+    if (Math.random() < 0.30) {
+      const x2 = fromLeft ? x - 60 : x + 60;
+      this.spawnEnemy(x2, y, type, Math.random() < 0.4 ? 'fast' : 'normal');
+    }
+  }
+
+  spawnCapsule(x, y, vx) {
+    const capsule = this.capsules.create(x, y, 'capsule');
+    capsule.setVelocityX(vx);
+    capsule.setDepth(6);
+    // Sine wave movement logic
+    capsule.startX = x;
+    capsule.startY = y;
+    capsule.timeOffset = this.time.now;
   }
 
   spawnEnemy(x, y, type, variant = 'normal') {
@@ -585,8 +904,8 @@ export class GameScene extends Phaser.Scene {
     const bulletType = isLaser ? 'laser_bullet' : 'enemy_bullet';
     const bullet = this.enemyBullets.get(x, y, bulletType);
     if (!bullet) return;
-    bullet.setActive(true).setVisible(true);
-    bullet.body.enable = true;
+    bullet.enableBody(true, x, y, true, true);
+    bullet.body.reset(x, y);
     bullet.body.allowGravity = false;
     // Add inaccuracy so enemies don't always hit
     const inaccuracy = (Math.random() - 0.5) * 0.25;
@@ -605,8 +924,8 @@ export class GameScene extends Phaser.Scene {
       const angle = baseAngle + (i - (count - 1) / 2) * (spread / Math.max(count - 1, 1));
       const bullet = this.enemyBullets.get(x, y, 'enemy_bullet');
       if (!bullet) continue;
-      bullet.setActive(true).setVisible(true);
-      bullet.body.enable = true;
+      bullet.enableBody(true, x, y, true, true);
+      bullet.body.reset(x, y);
       bullet.body.allowGravity = false;
       bullet.setVelocity(Math.cos(angle) * ENEMY_BULLET_SPEED, Math.sin(angle) * ENEMY_BULLET_SPEED);
       bullet.setRotation(angle);
@@ -620,10 +939,84 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.enemies, this.ground);
     this.physics.add.collider(this.enemies, this.platforms);
+    this.physics.add.collider(this.weaponItems, this.ground);
+    this.physics.add.collider(this.weaponItems, this.platforms);
+
+    // Cover collisions (sandbags stop players, enemies, and BOTH bullets)
+    if (this.cover) {
+      this.physics.add.collider(this.player, this.cover);
+      this.physics.add.collider(this.enemies, this.cover);
+      this.physics.add.collider(this.weaponItems, this.cover);
+      // Player bullets are blocked by sandbags
+      this.physics.add.collider(this.playerBullets, this.cover, (bullet) => {
+        this.createHitSpark(bullet.x, bullet.y);
+        bullet.disableBody(true, true);
+      });
+      // Enemy bullets are also blocked
+      this.physics.add.collider(this.enemyBullets, this.cover, (bullet) => {
+        this.createHitSpark(bullet.x, bullet.y);
+        bullet.disableBody(true, true);
+      });
+    }
 
     this.physics.add.overlap(this.playerBullets, this.enemies, this.hitEnemy, null, this);
+    this.physics.add.overlap(this.playerBullets, this.capsules, this.hitCapsule, null, this);
     this.physics.add.overlap(this.enemyBullets, this.player, this.hitPlayerBullet, null, this);
     this.physics.add.overlap(this.player, this.enemies, this.playerEnemyContact, null, this);
+    this.physics.add.overlap(this.player, this.weaponItems, this.collectWeapon, null, this);
+  }
+
+  hitCapsule(bullet, capsule) {
+    if (!bullet.active || !capsule.active) return;
+    bullet.disableBody(true, true);
+    capsule.disableBody(true, true);
+    this.createHitSpark(capsule.x, capsule.y);
+
+    const types = ['S', 'M', 'L'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const item = this.weaponItems.create(capsule.x, capsule.y, 'weapon_' + type);
+    item.weaponType = type;
+    item.setVelocity(0, -180);
+    item.setDepth(6);
+
+    // Weapon letter label floating above
+    const colorMap = { S: '#ff6633', M: '#ffee33', L: '#4488ff' };
+    const label = this.add.text(capsule.x, capsule.y - 16, type, {
+      fontSize: '14px', fontFamily: "'Press Start 2P', monospace",
+      color: colorMap[type] || '#ffffff',
+      stroke: '#000000', strokeThickness: 5
+    }).setOrigin(0.5).setDepth(7);
+    item.label = label;
+
+    // Flash the box
+    this.tweens.add({
+      targets: item,
+      scaleX: { from: 1.4, to: 1 }, scaleY: { from: 1.4, to: 1 },
+      duration: 200, ease: 'Back.Out'
+    });
+  }
+
+  collectWeapon(player, item) {
+    if (!player.active || !item.active) return;
+    player.currentWeapon = item.weaponType;
+    if (item.label) item.label.destroy();
+    item.disableBody(true, true);
+    audio.playItem();
+    this.score += 500;
+    EventBus.emit('score-changed', this.score);
+
+    // Screen flash
+    const flash = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xffffff, 0.25)
+      .setOrigin(0).setScrollFactor(0).setDepth(20);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 250, onComplete: () => flash.destroy() });
+
+    const colorMap = { S: '#ff6633', M: '#ffee33', L: '#4488ff' };
+    const pt = this.add.text(player.x, player.y - 40, `GET ${item.weaponType}!`, {
+      fontSize: '11px', fontFamily: "'Press Start 2P', monospace",
+      color: colorMap[item.weaponType] || '#ffff00',
+      stroke: '#000000', strokeThickness: 5
+    }).setOrigin(0.5).setDepth(20);
+    this.tweens.add({ targets: pt, y: pt.y - 40, alpha: 0, duration: 1200, ease: 'Quad.Out', onComplete: () => pt.destroy() });
   }
 
   hitEnemy(bullet, enemy) {
@@ -679,15 +1072,30 @@ export class GameScene extends Phaser.Scene {
     this.lives--;
     EventBus.emit('lives-changed', this.lives);
 
+    // Hide dead player immediately so no ghost remains active or interactive
+    if (this.player) {
+      this.player.setActive(false).setVisible(false);
+      this.player.body.enable = false;
+      if (this.player.nameLabel) {
+        this.player.nameLabel.setVisible(false);
+      }
+    }
+
     if (this.lives <= 0) {
       this.gameOver();
     } else {
       this.time.delayedCall(800, () => {
-        this.player.respawn(100, GAME_HEIGHT - 150);
-        EventBus.emit('health-changed', {
-          health: this.player.health,
-          maxHealth: this.player.maxHealth,
-        });
+        if (this.player) {
+          this.player.respawn(100, GAME_HEIGHT - 150);
+          // Ensure label is visible after respawn
+          if (this.player.nameLabel) {
+            this.player.nameLabel.setVisible(true);
+          }
+          EventBus.emit('health-changed', {
+            health: this.player.health,
+            maxHealth: this.player.maxHealth,
+          });
+        }
       });
     }
   }
@@ -716,8 +1124,8 @@ export class GameScene extends Phaser.Scene {
         lives: DIFFICULTIES[this.difficulty].playerLives,
       });
     };
-    const onPause = () => { this.scene.pause(); };
-    const onResume = () => { this.scene.resume(); };
+    const onPause = () => { if (this.scene.isActive()) this.scene.pause(); };
+    const onResume = () => { if (this.scene.isPaused()) this.scene.resume(); };
     const onTouch = (data) => this.handleTouchControl(data);
 
     EventBus.on('start-game', onStart);
@@ -728,6 +1136,7 @@ export class GameScene extends Phaser.Scene {
 
     this.events.once('shutdown', () => {
       if (this.ambushTimer) this.ambushTimer.remove();
+      if (this.capsuleTimer) this.capsuleTimer.remove();
       EventBus.off('start-game', onStart);
       EventBus.off('restart-game', onRestart);
       EventBus.off('pause-game', onPause);
@@ -839,14 +1248,39 @@ export class GameScene extends Phaser.Scene {
   }
 
   cleanupBullets() {
+    const camL = this.cameras.main.scrollX - 100;
+    const camR = this.cameras.main.scrollX + GAME_WIDTH + 100;
+    const camT = -100;
+    const camB = GAME_HEIGHT + 100;
+
     this.playerBullets.getChildren().forEach(b => {
-      if (b.active && (b.x < -50 || b.x > this.worldWidth + 50 || b.y < -50 || b.y > GAME_HEIGHT + 50)) {
+      if (b.active && (b.x < camL || b.x > camR || b.y < camT || b.y > camB)) {
         b.disableBody(true, true);
       }
     });
     this.enemyBullets.getChildren().forEach(b => {
-      if (b.active && (b.x < -50 || b.x > this.worldWidth + 50 || b.y < -50 || b.y > GAME_HEIGHT + 50)) {
+      if (b.active && (b.x < camL || b.x > camR || b.y < camT || b.y > camB)) {
         b.disableBody(true, true);
+      }
+    });
+    
+    // Cleanup items falling off screen
+    this.weaponItems.getChildren().forEach(item => {
+      if (item.active) {
+        if (item.label) { item.label.x = item.x; item.label.y = item.y - 12; }
+        if (item.y > GAME_HEIGHT + 50) {
+          if (item.label) item.label.destroy();
+          item.disableBody(true, true);
+        }
+      }
+    });
+
+    // Update capsules movement (sine wave) and cleanup
+    const now = this.time.now;
+    this.capsules.getChildren().forEach(capsule => {
+      if (capsule.active) {
+        capsule.y = capsule.startY + Math.sin((now - capsule.timeOffset) / 300) * 40;
+        if (capsule.x < -100 || capsule.x > this.worldWidth + 100) capsule.disableBody(true, true);
       }
     });
   }

@@ -7,6 +7,7 @@ const config = {
   height: 576,
   parent: 'game-container',
   pixelArt: true,
+  roundPixels: true,
   backgroundColor: '#0a0a0a',
   physics: {
     default: 'arcade',

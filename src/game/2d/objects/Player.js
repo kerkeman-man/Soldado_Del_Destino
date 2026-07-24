@@ -1,30 +1,36 @@
 import Phaser from 'phaser';
 import { HEROES, BULLET_SPEED, GRAVITY } from '@/game/config';
+import { audio } from '@/game/audio/SoundEngine';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, heroKey) {
-    const heroTexKey = 'player_walk_' + heroKey;
-    const useHeroTex = scene.textures.exists(heroTexKey);
-    const useGeneric = !useHeroTex && scene.textures.exists('player_walk');
+    // Always use the locally generated spritesheet (22×64 per frame)
+    const localKey = 'player_walk_' + heroKey;
+    const fallbackKey = 'player_walk';
+    const texKey = scene.textures.exists(localKey) ? localKey
+                 : scene.textures.exists(fallbackKey) ? fallbackKey
+                 : 'player_' + heroKey;
+    const useAnim = texKey !== ('player_' + heroKey); // true if it's a spritesheet
 
-    super(scene, x, y,
-      useHeroTex ? heroTexKey : (useGeneric ? 'player_walk' : 'player_' + heroKey), 0);
+    super(scene, x, y, texKey, 0);
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
     this.heroKey = heroKey;
     this.heroData = HEROES[heroKey];
-    this.useGen = useHeroTex || useGeneric;
-    this.useHeroTex = useHeroTex;
+    this.useGen = useAnim;         // kept for compatibility checks
+    this.useHeroTex = useAnim;
+    this._animKey = useAnim ? (texKey + '_anim') : null;
 
     this.setCollideWorldBounds(true);
     this.body.setGravityY(GRAVITY);
 
-    if (this.useGen) {
-      this.setScale(1.5);
-      // Body: 28x48 centered in 64x64 frame → offset (18, 8)
-      this.body.setSize(28, 48, false);
-      this.body.setOffset(18, 8);
+    if (useAnim) {
+      // 64×64 frame from official Super Contra spritesheet
+      this.setScale(1.4);
+      // Body 26×48 centered, offset (19, 10) so feet hit Y=58 (ground level)
+      this.body.setSize(26, 48, false);
+      this.body.setOffset(19, 10);
     } else {
       this.setScale(2);
       this.body.setSize(12, 22, false);
@@ -43,6 +49,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.muzzleFlash = null;
     this.isMoving = false;
     this.wasMoving = false;
+    this.currentWeapon = 'normal';
 
     // Name label above player
     const labelColor = heroKey === 'fufuruco' ? '#cc8855' : '#eeeeff';
@@ -54,6 +61,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       strokeThickness: 3,
     }).setOrigin(0.5).setDepth(6);
   }
+
 
   moveLeft() {
     if (this.isDucking) { this.body.setVelocityX(0); this.isMoving = false; return; }
@@ -79,61 +87,89 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   jump() {
     if (this.body.blocked.down || this.body.touching.down) {
       this.body.setVelocityY(-this.heroData.jumpForce);
+      audio.playJump();
     }
   }
 
   duck() {
-    if (!this.isDucking && (this.body.blocked.down || this.body.touching.down)) {
-      this.isDucking = true;
-      this.body.setVelocityX(0);
-      this.isMoving = false;
-      if (this.useGen) {
-        // Keep bottom at same position: offset_y + 24 = 8 + 48 → offset_y = 32
-        this.body.setSize(28, 24, false);
-        this.body.setOffset(18, 32);
-      } else {
-        // 12x12, keep bottom: offset_y + 12 = 1 + 22 → offset_y = 11
-        this.body.setSize(12, 12, false);
-        this.body.setOffset(5, 11);
-      }
+    if (this.isDucking) return;
+    if (!this.body.blocked.down && !this.body.touching.down) return;
+    this.isDucking = true;
+    this.body.setVelocityX(0);
+    this.isMoving = false;
+    if (this.useGen) {
+      // Squat: compress sprite to 55% height, anchor at bottom
+      this.setScale(1.4, 0.75);
+      this.body.setSize(34, 28, false);
+      this.body.setOffset(15, 28);
+    } else {
+      this.setScale(2, 1.2);
+      this.body.setSize(14, 12, false);
+      this.body.setOffset(4, 11);
+    }
+    if (this._animKey) {
+      this.anims.stop();
+      this.setFrame(0);
+      this.wasMoving = false;
     }
   }
 
   stand() {
-    if (this.isDucking) {
-      this.isDucking = false;
-      if (this.useGen) {
-        this.body.setSize(28, 48, false);
-        this.body.setOffset(18, 8);
-      } else {
-        this.body.setSize(12, 22, false);
-        this.body.setOffset(5, 1);
-      }
+    if (!this.isDucking) return;
+    this.isDucking = false;
+    if (this.useGen) {
+      this.setScale(1.4, 1.4);
+      this.body.setSize(26, 48, false);
+      this.body.setOffset(19, 10);
+    } else {
+      this.setScale(2, 2);
+      this.body.setSize(12, 22, false);
+      this.body.setOffset(5, 1);
     }
   }
 
   shoot(scene, bullets) {
     const now = scene.time.now;
-    if (now - this.lastShootTime < this.heroData.fireRate) return;
+    let fireRate = this.heroData.fireRate;
+    if (this.currentWeapon === 'M') fireRate = fireRate * 0.45; // Fast machine gun
+    if (this.currentWeapon === 'L') fireRate = fireRate * 1.5;  // Slow powerful laser
+
+    if (now - this.lastShootTime < fireRate) return;
     this.lastShootTime = now;
 
     const offsetX = this.direction * (this.useGen ? 36 : 24);
     const offsetY = this.aimUp ? -30 : (this.isDucking ? 2 : (this.useGen ? -8 : -4));
 
-    const bullet = bullets.get(this.x + offsetX, this.y + offsetY, 'player_bullet');
-    if (!bullet) return;
+    const spawnBullet = (angOffset = 0) => {
+      const type = this.currentWeapon === 'L' ? 'laser_bullet' : (this.currentWeapon === 'S' ? 'spread_bullet' : 'player_bullet');
+      const bx = this.x + offsetX;
+      const by = this.y + offsetY;
+      const bullet = bullets.get(bx, by, type);
+      if (!bullet) return;
 
-    bullet.setActive(true).setVisible(true);
-    bullet.body.enable = true;
-    bullet.body.allowGravity = false;
-    bullet.setScale(this.useGen ? 2 : 1);
+      bullet.enableBody(true, bx, by, true, true);
+      bullet.body.reset(bx, by);
+      bullet.body.allowGravity = false;
+      bullet.setScale(this.useGen && type === 'player_bullet' ? 2 : 1);
 
-    if (this.aimUp) {
-      bullet.setVelocity(0, -BULLET_SPEED);
-      bullet.setRotation(-Math.PI / 2);
+      let angle = this.aimUp ? -Math.PI / 2 : (this.direction === 1 ? 0 : Math.PI);
+      angle += angOffset;
+
+      const speed = this.currentWeapon === 'L' ? BULLET_SPEED * 1.5 : BULLET_SPEED;
+      bullet.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      bullet.setRotation(angle);
+    };
+
+    if (this.currentWeapon === 'S') {
+      spawnBullet(0);
+      spawnBullet(-0.12);
+      spawnBullet(0.12);
+      spawnBullet(-0.25);
+      spawnBullet(0.25);
+      audio.playSpread();
     } else {
-      bullet.setVelocity(this.direction * BULLET_SPEED, 0);
-      bullet.setRotation(0);
+      spawnBullet(0);
+      audio.playLaser();
     }
 
     // Muzzle flash
@@ -154,15 +190,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.invincible) return false;
     this.health -= amount;
     this.invincible = true;
+    this.currentWeapon = 'normal'; // Lose weapon on hit
     this.setAlpha(0.4);
     this.body.setVelocityX(-this.direction * 120);
     this.body.setVelocityY(-220);
+    audio.playHurt();
 
+    this.scene.tweens.killTweensOf(this);
     this.scene.tweens.add({
       targets: this,
       alpha: { from: 0.3, to: 1 },
       duration: 100, repeat: 12,
-      onComplete: () => { this.setAlpha(1); this.invincible = false; },
+      onComplete: () => { if (this.active) { this.setAlpha(1); this.invincible = false; } },
     });
     return true;
   }
@@ -171,10 +210,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.health = this.maxHealth;
     this.invincible = true;
     this.isDucking = false;
+    this.currentWeapon = 'normal';
     if (this.useGen) {
-      this.body.setSize(28, 48, false);
-      this.body.setOffset(18, 8);
+      this.setScale(1.4);
+      this.body.setSize(26, 48, false);
+      this.body.setOffset(19, 10);
     } else {
+      this.setScale(2);
       this.body.setSize(12, 22, false);
       this.body.setOffset(5, 1);
     }
@@ -183,11 +225,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.enable = true;
     this.setAlpha(0.4);
 
+    this.scene.tweens.killTweensOf(this);
     this.scene.tweens.add({
       targets: this,
       alpha: { from: 0.3, to: 1 },
       duration: 150, repeat: 12,
-      onComplete: () => { this.setAlpha(1); this.invincible = false; },
+      onComplete: () => { if (this.active) { this.setAlpha(1); this.invincible = false; } },
     });
   }
 
@@ -198,17 +241,23 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.nameLabel.y = this.y - 55;
     }
 
-    if (!this.useGen) return;
+    if (!this._animKey) return;
+    if (!this.anims.exists(this._animKey)) return;
 
-    const animKey = this.useHeroTex
-      ? 'player_walk_' + this.heroKey + '_anim'
-      : 'player_walk_anim';
-    if (!this.anims.exists(animKey)) return;
+    // Tolerancia micro-rebotes de Arcade Physics
+    const isJumping = !this.body.blocked.down && !this.body.touching.down
+                      && Math.abs(this.body.velocity.y) > 20;
 
-    const onGround = this.body.blocked.down || this.body.touching.down;
-    if (this.isMoving && !this.isDucking && onGround) {
+    if (this.isDucking) {
+      // Ducking frame: stop anim, use frame 0 squished
+      if (this.wasMoving) {
+        this.anims.stop();
+        this.setFrame(0);
+        this.wasMoving = false;
+      }
+    } else if (this.isMoving && !isJumping) {
       if (!this.wasMoving) {
-        this.play(animKey, true);
+        this.play(this._animKey, true);
         this.wasMoving = true;
       }
     } else {

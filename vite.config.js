@@ -59,6 +59,18 @@ export default defineConfig({
       },
     },
   }),
+  // Local dev proxy: forward Base44 API calls to the real backend
+  ...(!isRunningInSandbox && {
+    server: {
+      proxy: {
+        '/api': {
+          target: 'https://api.base44.com',
+          changeOrigin: true,
+          secure: true,
+        },
+      },
+    },
+  }),
   build: {
     rollupOptions: {
       ...(isRunningInSandbox && {

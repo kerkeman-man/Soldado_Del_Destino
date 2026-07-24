@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GRAVITY, GAME_HEIGHT } from '@/game/config';
+import { audio } from '@/game/audio/SoundEngine';
 
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, type, config) {
@@ -29,7 +30,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.onShootSpread = null;
     this.lastShootTime = 0;
     this.useGen = useGen;
-    this.spriteFacesLeft = useGen && type === 'soldier';
+    this.spriteFacesLeft = false; // Super Contra spritesheets face RIGHT by default
     this.wasMoving = false;
 
     if (type === 'boss') {
@@ -52,8 +53,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     } else {
       // soldier
       const speedMult = this.variant === 'fast' ? 1.8 : 1;
-      this.setScale(useGen ? 1.5 : 2);
-      this.body.setSize(useGen ? 24 : 12, useGen ? 44 : 22, true);
+      this.setScale(useGen ? 1.4 : 2);
+      this.body.setSize(useGen ? 26 : 12, useGen ? 48 : 22, false);
+      if (useGen) {
+        this.body.setOffset(19, 10);
+      }
       this.body.setGravityY(GRAVITY);
       this.body.setVelocityX(config.speed * speedMult * (Math.random() > 0.5 ? 1 : -1));
       this.setCollideWorldBounds(true);
@@ -88,6 +92,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (dist > 600) return;
     const yOffset = this.useGen ? 20 : 8;
     if (this.onShoot) this.onShoot(this.x, this.y - yOffset, scene.player.x, scene.player.y - 10, this.variant);
+    audio.playEnemyShoot();
   }
 
   bossShoot(scene) {
@@ -102,6 +107,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     } else {
       if (this.onShootSpread) this.onShootSpread(this.x, this.y - 30, px, py, 5, 50);
     }
+    audio.playEnemyShoot();
   }
 
   update(scene) {
@@ -109,19 +115,36 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     if (this.type === 'soldier') {
       if (scene.player) {
-        if (this.spriteFacesLeft) this.setFlipX(scene.player.x > this.x);
-        else this.setFlipX(scene.player.x < this.x);
+        const dx = scene.player.x - this.x;
+        const dist = Math.abs(dx);
+        const speedMult = this.variant === 'fast' ? 1.8 : 1;
+        const chaseSpeed = this.config.speed * speedMult;
+
+        // Sprite faces RIGHT natively, so flipX = true when player is to the left (dx < 0)
+        this.setFlipX(dx < 0);
+
+        if (dist > 300) {
+          // Chase the player aggressively
+          this.body.setVelocityX(dx > 0 ? chaseSpeed : -chaseSpeed);
+        } else if (dist > 80) {
+          // Slow walk to maintain firing distance
+          this.body.setVelocityX(dx > 0 ? chaseSpeed * 0.4 : -chaseSpeed * 0.4);
+        } else {
+          // Too close — back away slightly
+          this.body.setVelocityX(dx > 0 ? -chaseSpeed * 0.3 : chaseSpeed * 0.3);
+        }
+      } else {
+        // No player target: reverse on wall hit
+        const speedMult = this.variant === 'fast' ? 1.8 : 1;
+        if (this.body.blocked.right) this.body.setVelocityX(-this.config.speed * speedMult);
+        else if (this.body.blocked.left) this.body.setVelocityX(this.config.speed * speedMult);
       }
-      const speedMult = this.variant === 'fast' ? 1.8 : 1;
-      if (this.body.blocked.right || this.body.touching.right) {
-        this.body.setVelocityX(-this.config.speed * speedMult);
-      } else if (this.body.blocked.left || this.body.touching.left) {
-        this.body.setVelocityX(this.config.speed * speedMult);
-      }
-      // Walk animation
+
+      // Walk animation driven by actual velocity
       if (this.useGen) {
+        const moving = Math.abs(this.body.velocity.x) > 15;
         const onGround = this.body.blocked.down || this.body.touching.down;
-        if (Math.abs(this.body.velocityX) > 10 && onGround) {
+        if (moving && onGround) {
           if (!this.wasMoving) { this.play('enemy_walk_anim', true); this.wasMoving = true; }
         } else {
           if (this.wasMoving) { this.anims.stop(); this.setFrame(0); this.wasMoving = false; }
@@ -183,6 +206,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   die() {
     if (this.shootTimer) this.shootTimer.remove();
+    audio.playExplosion();
     const colors = {
       soldier: this.variant === 'laser' ? 0xcc66ff : (this.variant === 'fast' ? 0xff9944 : 0xaa2020),
       alien: 0x44aa44, machine: 0x888888, boss: 0xff4400,
