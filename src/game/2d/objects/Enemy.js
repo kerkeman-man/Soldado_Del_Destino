@@ -162,8 +162,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         if (this.spriteFacesLeft) this.setFlipX(scene.player.x > this.x);
         else this.setFlipX(scene.player.x < this.x);
       }
-      if (this.y < 50) this.body.setVelocityY(Math.abs(this.body.velocityY));
-      if (this.y > GAME_HEIGHT - 120) this.body.setVelocityY(-Math.abs(this.body.velocityY));
+      if (this.y < 50) this.body.setVelocityY(Math.abs(this.body.velocity.y));
+      if (this.y > GAME_HEIGHT - 120) this.body.setVelocityY(-Math.abs(this.body.velocity.y));
     } else if (this.type === 'machine') {
       if (scene.player) {
         if (this.spriteFacesLeft) this.setFlipX(scene.player.x > this.x);

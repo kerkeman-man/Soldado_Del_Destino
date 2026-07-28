@@ -275,6 +275,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   createPlayerTexture(key, p) {
+    if (this.textures.exists(key)) return;
     const g = this.add.graphics();
     // Helmet
     g.fillStyle(p.helmet); g.fillRect(4, 0, 10, 4); g.fillRect(3, 2, 12, 2);
@@ -380,6 +381,7 @@ export class GameScene extends Phaser.Scene {
 
 
   createSoldierTexture(key, p) {
+    if (this.textures.exists(key)) return;
     const g = this.add.graphics();
     // Helmet
     g.fillStyle(p.helmet); g.fillRect(4, 0, 10, 4); g.fillRect(3, 2, 12, 2);
@@ -407,6 +409,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   createAlienTexture(key, p) {
+    if (this.textures.exists(key)) return;
     const g = this.add.graphics();
     // Body (round)
     g.fillStyle(p.body); g.fillCircle(8, 8, 7);
@@ -430,6 +433,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   createMachineTexture(key, p) {
+    if (this.textures.exists(key)) return;
     const g = this.add.graphics();
     // Body
     g.fillStyle(p.body); g.fillRect(4, 4, 24, 24);
@@ -451,6 +455,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   createBossTexture(key, p) {
+    if (this.textures.exists(key)) return;
     const g = this.add.graphics();
     // Main body
     g.fillStyle(p.body); g.fillCircle(24, 26, 18);
@@ -519,6 +524,12 @@ export class GameScene extends Phaser.Scene {
 
   createBackground(level) {
     // 16-bit Crisp Procedural Super Contra Parallax Background (Zero AI ghosts!)
+    this.cameras.main.setBackgroundColor(level.bgBottom);
+
+    if (this.textures.exists('bg_grad')) {
+      this.textures.remove('bg_grad');
+    }
+
     const g = this.add.graphics();
     for (let y = 0; y < GAME_HEIGHT; y++) {
       const t = y / GAME_HEIGHT;
@@ -533,7 +544,20 @@ export class GameScene extends Phaser.Scene {
       this.add.image(x, 0, 'bg_grad').setOrigin(0, 0).setDepth(-20);
     }
 
+    if (level.theme === 'jungle' && this.textures.exists('bg_jungle')) {
+      this.add.image(0, 0, 'bg_jungle')
+        .setOrigin(0, 0)
+        .setDisplaySize(this.worldWidth, GAME_HEIGHT)
+        .setScrollFactor(0.2)
+        .setAlpha(0.75)
+        .setDepth(-19);
+    }
+
     // Parallax far mountains and jungle canopy
+    if (this.textures.exists('parallax_far')) {
+      this.textures.remove('parallax_far');
+    }
+
     const fg = this.add.graphics();
     for (let i = 0; i < 50; i++) {
       const x = (i / 50) * GAME_WIDTH * 2;

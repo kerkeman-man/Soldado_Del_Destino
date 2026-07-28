@@ -130,6 +130,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   shoot(scene, bullets) {
     const now = scene.time.now;
+    if (bullets.countActive(true) > 22) return;
+
     let fireRate = this.heroData.fireRate;
     if (this.currentWeapon === 'M') fireRate = fireRate * 0.45; // Fast machine gun
     if (this.currentWeapon === 'L') fireRate = fireRate * 1.5;  // Slow powerful laser

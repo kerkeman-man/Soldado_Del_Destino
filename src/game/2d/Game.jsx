@@ -4,32 +4,21 @@ import StartGame from '@/game/2d/main';
 // Module-level singleton — survives React StrictMode's double-invoke
 let _phaserInstance = null;
 
-function destroyExisting() {
-  if (_phaserInstance) {
-    try {
-      _phaserInstance.destroy(true);
-    } catch (_) {}
-    _phaserInstance = null;
-  }
-  // Also nuke any leftover canvas nodes aggressively
-  const c = document.getElementById('game-container');
-  if (c) {
-    c.innerHTML = '';
-  }
-}
-
-/**
- * 2D (Phaser) flavor of the engine contract. Uses a module-level singleton
- * so that React 18 StrictMode double-effect never creates two Phaser instances.
- */
 export default function Game({ onReady }) {
+  const gameRef = useRef(null);
   const readyCalled = useRef(false);
 
   useEffect(() => {
-    // Always wipe any previous instance first
-    destroyExisting();
+    // If a previous instance is still around, destroy it
+    if (_phaserInstance) {
+      try {
+        _phaserInstance.destroy(true);
+      } catch (_) {}
+      _phaserInstance = null;
+    }
 
-    const instance = StartGame('game-container');
+    // Start Phaser and attach it to our specific div ref
+    const instance = StartGame(gameRef.current);
     _phaserInstance = instance;
 
     if (typeof onReady === 'function' && !readyCalled.current) {
@@ -38,12 +27,19 @@ export default function Game({ onReady }) {
     }
 
     return () => {
-      destroyExisting();
+      if (_phaserInstance) {
+        try {
+          _phaserInstance.destroy(true);
+        } catch (_) {}
+        _phaserInstance = null;
+      }
       readyCalled.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return null;
+  // Return a div that fills the parent and acts as the Phaser container.
+  // When this component unmounts in StrictMode, React removes this div,
+  // taking any late-appended canvas with it.
+  return <div ref={gameRef} style={{ width: '100%', height: '100%' }} />;
 }
-
