@@ -28,6 +28,13 @@ export default function GamePage() {
   useEffect(() => {
     const load = async () => {
       try {
+        const localHs = localStorage.getItem('sdd_high_score');
+        if (localHs) setHighScore(parseInt(localHs, 10));
+        const localProg = localStorage.getItem('sdd_progress');
+        if (localProg) setSavedProgress(JSON.parse(localProg));
+      } catch (_) {}
+
+      try {
         const records = await base44.entities.GameProgress.list('-updated_date', 1);
         if (records.length > 0) {
           setSavedProgress(records[0]);
@@ -77,19 +84,22 @@ export default function GamePage() {
   }, [phase]);
 
   const saveHighScore = async (s) => {
+    const newHigh = Math.max(highScore, s);
+    setHighScore(newHigh);
+    try { localStorage.setItem('sdd_high_score', String(newHigh)); } catch (_) {}
     try {
       const records = await base44.entities.GameProgress.list('-updated_date', 1);
-      const newHigh = Math.max(highScore, s);
       if (records.length > 0) {
         await base44.entities.GameProgress.update(records[0].id, { high_score: Math.max(records[0].high_score || 0, s) });
       } else {
         await base44.entities.GameProgress.create({ high_score: s, difficulty, hero, level_reached: 1, sublevel_reached: 1 });
       }
-      setHighScore(newHigh);
     } catch (e) { /* ignore */ }
   };
 
   const saveProgress = async (newLevel, newSubLevel) => {
+    const progData = { level_reached: newLevel, sublevel_reached: newSubLevel, high_score: score, difficulty, hero };
+    try { localStorage.setItem('sdd_progress', JSON.stringify(progData)); } catch (_) {}
     try {
       const records = await base44.entities.GameProgress.list('-updated_date', 1);
       if (records.length > 0) {
@@ -101,10 +111,7 @@ export default function GamePage() {
           difficulty, hero,
         });
       } else {
-        await base44.entities.GameProgress.create({
-          level_reached: newLevel, sublevel_reached: newSubLevel,
-          high_score: score, difficulty, hero,
-        });
+        await base44.entities.GameProgress.create(progData);
       }
     } catch (e) { /* ignore */ }
   };

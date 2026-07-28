@@ -20,7 +20,7 @@ const allowIframeEmbedding = {
 // https://vite.dev/config/
 export default defineConfig({
   logLevel: 'error', // Suppress warnings, only show errors
-  base: process.env.VITE_BASE_PATH || '/',
+  base: process.env.VITE_BASE_PATH || './',
   plugins: [
     react(),
     ...(isRunningInSandbox ? [allowIframeEmbedding] : []),
