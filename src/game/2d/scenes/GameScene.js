@@ -3,7 +3,7 @@ import { EventBus } from '@/game/EventBus';
 import {
   GAME_WIDTH, GAME_HEIGHT,
   WORLD_WIDTH, BOSS_WORLD_WIDTH, PALETTE, DIFFICULTIES, LEVELS,
-  BOSS_NAMES, SUBLEVELS_PER_LEVEL, ASSETS,
+  BOSS_NAMES, SUBLEVELS_PER_LEVEL, ASSETS, ENEMY_BULLET_SPEED,
 } from '@/game/config';
 import { Player } from '@/game/2d/objects/Player';
 import { Enemy } from '@/game/2d/objects/Enemy';
