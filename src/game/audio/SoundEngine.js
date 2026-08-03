@@ -15,14 +15,18 @@ class RetroAudioEngine {
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
   }
 
-  playLaser() {
-    if (this.isMuted) return;
+  canPlay() {
+    if (this.isMuted) return false;
     this.init();
-    if (!this.ctx) return;
+    return !!(this.ctx && this.ctx.state === 'running');
+  }
+
+  playLaser() {
+    if (!this.canPlay()) return;
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -42,9 +46,7 @@ class RetroAudioEngine {
   }
 
   playSpread() {
-    if (this.isMuted) return;
-    this.init();
-    if (!this.ctx) return;
+    if (!this.canPlay()) return;
 
     for (let i = 0; i < 3; i++) {
       const osc = this.ctx.createOscillator();
@@ -66,9 +68,7 @@ class RetroAudioEngine {
   }
 
   playJump() {
-    if (this.isMuted) return;
-    this.init();
-    if (!this.ctx) return;
+    if (!this.canPlay()) return;
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -88,9 +88,7 @@ class RetroAudioEngine {
   }
 
   playExplosion() {
-    if (this.isMuted) return;
-    this.init();
-    if (!this.ctx) return;
+    if (!this.canPlay()) return;
 
     // Buffer noise
     const bufferSize = this.ctx.sampleRate * 0.25;
@@ -121,9 +119,7 @@ class RetroAudioEngine {
   }
 
   playItem() {
-    if (this.isMuted) return;
-    this.init();
-    if (!this.ctx) return;
+    if (!this.canPlay()) return;
 
     const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
     notes.forEach((freq, idx) => {
@@ -145,9 +141,7 @@ class RetroAudioEngine {
   }
 
   playHurt() {
-    if (this.isMuted) return;
-    this.init();
-    if (!this.ctx) return;
+    if (!this.canPlay()) return;
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -167,9 +161,7 @@ class RetroAudioEngine {
   }
 
   playEnemyShoot() {
-    if (this.isMuted) return;
-    this.init();
-    if (!this.ctx) return;
+    if (!this.canPlay()) return;
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -189,9 +181,7 @@ class RetroAudioEngine {
   }
 
   playBossWarning() {
-    if (this.isMuted) return;
-    this.init();
-    if (!this.ctx) return;
+    if (!this.canPlay()) return;
 
     for (let i = 0; i < 4; i++) {
       const osc = this.ctx.createOscillator();
@@ -214,7 +204,6 @@ class RetroAudioEngine {
   startBGM() {
     if (this.musicPlaying || this.isMuted) return;
     this.init();
-    if (!this.ctx) return;
 
     this.musicPlaying = true;
     let step = 0;
@@ -222,7 +211,13 @@ class RetroAudioEngine {
     const melody = [220, 0, 261.63, 293.66, 329.63, 0, 293.66, 261.63];
 
     const playNote = () => {
-      if (!this.musicPlaying || !this.ctx) return;
+      if (!this.musicPlaying) return;
+
+      if (!this.ctx || this.ctx.state !== 'running') {
+        this.init();
+        this.bgmTimer = setTimeout(playNote, 400);
+        return;
+      }
 
       const now = this.ctx.currentTime;
       
