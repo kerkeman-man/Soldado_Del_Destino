@@ -1,0 +1,14 @@
+{
+  "worlds": [
+    { "id": 1, "name": "Mundo 1 – Desierto", "levels": [1,2,3,4,5,6,7,8], "worldBossId": "worldBoss_1" },
+    { "id": 2, "name": "Mundo 2 – Cueva", "levels": [9,10,11,12,13,14,15,16], "worldBossId": "worldBoss_2" },
+    { "id": 3, "name": "Mundo 3 – Selva", "levels": [17,18,19,20,21,22,23,24], "worldBossId": "worldBoss_3" },
+    { "id": 4, "name": "Mundo 4 – Montaña", "levels": [25,26,27,28,29,30,31,32], "worldBossId": "worldBoss_4" },
+    { "id": 5, "name": "Mundo 5 – Volcán", "levels": [33,34,35,36,37,38,39,40], "worldBossId": "worldBoss_5" },
+    { "id": 6, "name": "Mundo 6 – Ruinas", "levels": [41,42,43,44,45,46,47,48], "worldBossId": "worldBoss_6" },
+    { "id": 7, "name": "Mundo 7 – Laboratorio", "levels": [49,50,51,52,53,54,55,56], "worldBossId": "worldBoss_7" },
+    { "id": 8, "name": "Mundo 8 – Ciudad", "levels": [57,58,59,60,61,62,63,64], "worldBossId": "worldBoss_8" },
+    { "id": 9, "name": "Mundo 9 – Espacio", "levels": [65,66,67,68,69,70,71,72], "worldBossId": "worldBoss_9" },
+    { "id": 10, "name": "Mundo 10 – Final", "levels": [73,74,75,76,77,78,79,80], "worldBossId": "finalBoss" }
+  ]
+}
