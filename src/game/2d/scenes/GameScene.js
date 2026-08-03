@@ -39,11 +39,6 @@ export class GameScene extends Phaser.Scene {
     this.load.image('machine_img', ASSETS.machine);
     this.load.image('boss_img', ASSETS.boss);
     this.load.image('bg_jungle', ASSETS.bgJungle);
-
-    // Fallback texture generation if needed
-    this.load.once('complete', () => {
-      this.createTextures();
-    });
   }
 
   create() {
@@ -57,6 +52,7 @@ export class GameScene extends Phaser.Scene {
     this.boss = null;
 
     this.setupEventBus();
+    this.createTextures();
 
     if (!this.startReady) {
       EventBus.emit('current-scene-ready', this);
@@ -303,74 +299,125 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Generates a 4-frame walk spritesheet texture (256×64, 64px frame) using Graphics as a fallback.
+   * Generates a 6-frame walk spritesheet (384×64) with animated arms and legs.
+   * Arms swing opposite to legs for natural movement.
    */
   createWalkSpritesheet(key, p, isSoldier) {
-    const FW = 64, FH = 64, FRAMES = 4;
+    const FW = 64, FH = 64, FRAMES = 6;
 
     if (this.textures.exists(key)) {
-      return;
+      const tex = this.textures.get(key);
+      const imgW = tex.source[0] ? tex.source[0].width : 0;
+      if (imgW >= FW * 2) {
+        // Loaded spritesheet is valid (has at least 2 frames), keep it!
+        return;
+      }
+      // If it's a single frame placeholder, remove it to generate a procedural animated one.
+      this.textures.remove(key);
     }
 
-    const g = this.add.graphics();
+    // Draw onto an HTML5 canvas via Phaser's CanvasTexture
+    const canvas = document.createElement('canvas');
+    canvas.width = FW * FRAMES;
+    canvas.height = FH;
+    const ctx = canvas.getContext('2d');
 
-    const drawFrame = (frameIdx, legPhase) => {
-      const ox = frameIdx * FW;
+    const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+
+    // Leg/arm phases for 6 frames of walk cycle:
+    // legOffset[i] = [leftLegY, rightLegY, leftBootX, rightBootX]
+    const legFrames = [
+      { ll: 0,  rl: 0,  la: 0,  ra: 0  }, // neutral
+      { ll: -4, rl: 4,  la: 3,  ra: -3 }, // left fwd
+      { ll: -6, rl: 6,  la: 5,  ra: -5 }, // left fwd max
+      { ll: 0,  rl: 0,  la: 0,  ra: 0  }, // neutral
+      { ll: 4,  rl: -4, la: -3, ra: 3  }, // right fwd
+      { ll: 6,  rl: -6, la: -5, ra: 5  }, // right fwd max
+    ];
+
+    for (let f = 0; f < FRAMES; f++) {
+      const ox = f * FW;
+      const lf = legFrames[f];
+
+      // --- Background (transparent) ---
+      ctx.clearRect(ox, 0, FW, FH);
 
       // --- Helmet ---
-      g.fillStyle(p.helmet);
-      g.fillRect(ox + 22, 10, 20, 10); g.fillRect(ox + 18, 14, 28, 6);
+      ctx.fillStyle = hex(p.helmet);
+      ctx.fillRect(ox + 22, 6, 20, 8);
+      ctx.fillRect(ox + 18, 10, 28, 5);
+      // Helmet visor stripe
+      ctx.fillStyle = '#88ccff';
+      ctx.fillRect(ox + 22, 11, 20, 2);
 
-      // --- Face ---
-      g.fillStyle(p.skin); g.fillRect(ox + 22, 20, 20, 12);
-      g.fillStyle(p.bandana); g.fillRect(ox + 22, 22, 20, 3);
-      const eyeColor = isSoldier ? 0xff0000 : 0x222222;
-      g.fillStyle(eyeColor); g.fillRect(ox + 26, 26, 3, 3); g.fillRect(ox + 35, 26, 3, 3);
+      // --- Head ---
+      ctx.fillStyle = hex(p.skin);
+      ctx.fillRect(ox + 22, 14, 20, 12);
 
-      // --- Body ---
-      g.fillStyle(p.suit); g.fillRect(ox + 18, 32, 28, 16);
-      g.fillStyle(p.helmet); g.fillRect(ox + 28, 34, 8, 8);
+      // --- Bandana ---
+      ctx.fillStyle = hex(p.bandana);
+      ctx.fillRect(ox + 22, 16, 20, 3);
 
-      // --- Arms ---
-      const armY = (frameIdx % 2 === 0) ? 34 : 32;
-      g.fillStyle(p.suit);
-      g.fillRect(ox + 10, armY, 8, 12);
-      g.fillRect(ox + 46, armY, 8, 12);
+      // --- Eyes ---
+      ctx.fillStyle = isSoldier ? '#ff2222' : '#111111';
+      ctx.fillRect(ox + 26, 20, 4, 3);
+      ctx.fillRect(ox + 34, 20, 4, 3);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(ox + 27, 20, 2, 2);
+      ctx.fillRect(ox + 35, 20, 2, 2);
 
-      // --- Gun ---
-      g.fillStyle(p.gun || 0x888888);
-      g.fillRect(ox + 46, armY + 2, 14, 4);
-      g.fillRect(ox + 56, armY, 4, 8);
+      // --- Body torso ---
+      ctx.fillStyle = hex(p.suit);
+      ctx.fillRect(ox + 18, 26, 28, 16);
+
+      // --- Chest armour detail ---
+      ctx.fillStyle = hex(p.helmet);
+      ctx.fillRect(ox + 26, 28, 12, 8);
+      ctx.fillStyle = hex(p.bandana);
+      ctx.fillRect(ox + 28, 30, 8, 4);
 
       // --- Belt ---
-      g.fillStyle(0x333333); g.fillRect(ox + 18, 48, 28, 3);
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(ox + 18, 42, 28, 3);
 
-      // --- Legs walk cycle ---
-      g.fillStyle(p.legs || p.suit);
-      if (legPhase === 0) {
-        g.fillRect(ox + 20, 51, 10, 10); g.fillRect(ox + 34, 51, 10, 10);
-        g.fillStyle(p.boots || 0x111111);
-        g.fillRect(ox + 18, 61, 12, 3); g.fillRect(ox + 34, 61, 12, 3);
-      } else if (legPhase === 1) { // left forward
-        g.fillRect(ox + 16, 51, 10, 9); g.fillRect(ox + 36, 52, 10, 9);
-        g.fillStyle(p.boots || 0x111111);
-        g.fillRect(ox + 14, 60, 14, 4); g.fillRect(ox + 36, 61, 10, 3);
-      } else { // right forward
-        g.fillRect(ox + 20, 52, 10, 9); g.fillRect(ox + 34, 51, 10, 9);
-        g.fillStyle(p.boots || 0x111111);
-        g.fillRect(ox + 20, 61, 10, 3); g.fillRect(ox + 34, 60, 14, 4);
-      }
-    };
+      // --- Left arm (swing with lf.la offset) ---
+      const laY = 28 + lf.la;
+      ctx.fillStyle = hex(p.suit);
+      ctx.fillRect(ox + 8, laY, 10, 14);
+      // Left hand
+      ctx.fillStyle = hex(p.skin);
+      ctx.fillRect(ox + 8, laY + 14, 8, 4);
 
-    drawFrame(0, 0);
-    drawFrame(1, 1);
-    drawFrame(2, 0);
-    drawFrame(3, 2);
+      // --- Right arm + gun (swing with lf.ra offset) ---
+      const raY = 28 + lf.ra;
+      ctx.fillStyle = hex(p.suit);
+      ctx.fillRect(ox + 46, raY, 10, 14);
+      // Gun barrel
+      ctx.fillStyle = hex(p.gun || 0x666666);
+      ctx.fillRect(ox + 54, raY + 4, 10, 5);
+      ctx.fillRect(ox + 58, raY + 2, 5, 10);
 
-    g.generateTexture(key, FW * FRAMES, FH);
-    g.destroy();
+      // --- Left leg ---
+      const llY = 45 + lf.ll;
+      ctx.fillStyle = hex(p.legs || p.suit);
+      ctx.fillRect(ox + 18, llY, 12, 12);
+      // Left boot
+      ctx.fillStyle = hex(p.boots || 0x111111);
+      ctx.fillRect(ox + 16, llY + 11, 16, 5);
 
-    // Register frame offsets
+      // --- Right leg ---
+      const rlY = 45 + lf.rl;
+      ctx.fillStyle = hex(p.legs || p.suit);
+      ctx.fillRect(ox + 34, rlY, 12, 12);
+      // Right boot
+      ctx.fillStyle = hex(p.boots || 0x111111);
+      ctx.fillRect(ox + 32, rlY + 11, 16, 5);
+    }
+
+    // Add as texture
+    this.textures.addCanvas(key, canvas);
+
+    // Register individual frames
     const tex = this.textures.get(key);
     if (tex) {
       for (let i = 0; i < FRAMES; i++) {
@@ -486,24 +533,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   createAnimations() {
-    const makeAnim = (animKey, texKey) => {
-      if (this.textures.exists(texKey) && !this.anims.exists(animKey)) {
-        const tex = this.textures.get(texKey);
-        const imgW = tex.source[0] ? tex.source[0].width : 256;
-        const frameWidth = imgW >= 128 ? 64 : 22;
-        const totalFrames = Math.floor(imgW / frameWidth);
-        const frameEnd = Math.max(0, totalFrames - 1);
-        this.anims.create({
-          key: animKey,
-          frames: this.anims.generateFrameNumbers(texKey, { start: 0, end: frameEnd }),
-          frameRate: 10, repeat: -1,
-        });
-      }
+    const makeAnim = (animKey, texKey, defaultFrames) => {
+      if (!this.textures.exists(texKey)) return;
+      if (this.anims.exists(animKey)) return;
+
+      const tex = this.textures.get(texKey);
+      const imgW = tex.source[0] ? tex.source[0].width : 0;
+      const numFrames = imgW > 0 ? Math.floor(imgW / 64) : defaultFrames;
+      const frameEnd = Math.max(0, numFrames - 1);
+
+      this.anims.create({
+        key: animKey,
+        frames: this.anims.generateFrameNumbers(texKey, { start: 0, end: frameEnd }),
+        frameRate: 10,
+        repeat: -1,
+      });
     };
-    makeAnim('player_walk_fufuruco_anim', 'player_walk_fufuruco');
-    makeAnim('player_walk_lulo_anim', 'player_walk_lulo');
-    makeAnim('player_walk_anim', 'player_walk');
-    makeAnim('enemy_walk_anim', 'enemy_walk');
+    makeAnim('player_walk_fufuruco_anim', 'player_walk_fufuruco', 6);
+    makeAnim('player_walk_lulo_anim', 'player_walk_lulo', 6);
+    makeAnim('player_walk_anim', 'player_walk', 6);
+    makeAnim('enemy_walk_anim', 'enemy_walk', 6);
   }
 
   createHitSpark(x, y) {

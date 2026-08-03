@@ -22,6 +22,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.useHeroTex = useAnim;
     this._animKey = useAnim ? (texKey + '_anim') : null;
 
+    // Manual frame cycling (bypasses Phaser anim system for reliability)
+    if (useAnim) {
+      const tex = scene.textures.get(texKey);
+      const imgW = tex.source[0] ? tex.source[0].width : 0;
+      this._numWalkFrames = imgW >= 64 ? Math.floor(imgW / 64) : 4;
+    } else {
+      this._numWalkFrames = 1;
+    }
+    this._walkFrame = 0;
+    this._walkFrameTime = 0;
+    this._walkFPS = 10;
+
     this.setCollideWorldBounds(true);
     this.body.setGravityY(GRAVITY);
 
@@ -243,28 +255,28 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.nameLabel.y = this.y - 55;
     }
 
-    if (!this._animKey) return;
-    if (!this.anims.exists(this._animKey)) return;
-
     // Tolerancia micro-rebotes de Arcade Physics
     const isJumping = !this.body.blocked.down && !this.body.touching.down
-                      && Math.abs(this.body.velocity.y) > 20;
+                      && Math.abs(this.body.velocity.y) > 80;
 
     if (this.isDucking) {
-      // Ducking frame: stop anim, use frame 0 squished
-      if (this.wasMoving) {
-        this.anims.stop();
-        this.setFrame(0);
-        this.wasMoving = false;
+      // Agachado: frame 0
+      this._walkFrame = 0;
+      this.setFrame(0);
+      this.wasMoving = false;
+    } else if (this.isMoving && !isJumping && this._numWalkFrames > 1) {
+      // Ciclado manual de frames de caminata
+      const now = this.scene.time.now;
+      if (now - this._walkFrameTime > 1000 / this._walkFPS) {
+        this._walkFrame = (this._walkFrame + 1) % this._numWalkFrames;
+        this.setFrame(this._walkFrame);
+        this._walkFrameTime = now;
       }
-    } else if (this.isMoving && !isJumping) {
-      if (!this.wasMoving) {
-        this.play(this._animKey, true);
-        this.wasMoving = true;
-      }
+      this.wasMoving = true;
     } else {
+      // Parado o saltando: frame 0
       if (this.wasMoving) {
-        this.anims.stop();
+        this._walkFrame = 0;
         this.setFrame(0);
         this.wasMoving = false;
       }
