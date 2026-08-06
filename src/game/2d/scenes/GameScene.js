@@ -7,6 +7,7 @@ import {
 } from '@/game/config';
 import { Player } from '@/game/2d/objects/Player';
 import { Enemy } from '@/game/2d/objects/Enemy';
+import { OctopusBoss } from '@/game/2d/objects/OctopusBoss';
 import { audio } from '@/game/audio/SoundEngine';
 
 export class GameScene extends Phaser.Scene {
@@ -96,6 +97,9 @@ export class GameScene extends Phaser.Scene {
     this.createEnemyGroup();
     this.spawnEnemies();
 
+    // Machine/Boss and Door (requires player and playerBullets to exist)
+    this.createBossAndDoor();
+
     // Collisions
     this.setupCollisions();
 
@@ -146,6 +150,7 @@ export class GameScene extends Phaser.Scene {
     this.createSoldierTexture('enemy_soldier', PALETTE.soldier);
     this.createAlienTexture('enemy_alien', PALETTE.alien);
     this.createMachineTexture('enemy_machine', PALETTE.machine);
+    this.createDoorTexture('door_img');
     this.createBossTexture('enemy_boss', PALETTE.boss);
 
     // Generate walk animation spritesheets locally (4 frames, 22x24 each)
@@ -163,6 +168,12 @@ export class GameScene extends Phaser.Scene {
 
     // Enemy bullet
     const ebg = this.add.graphics();
+    // Confetti particle texture
+    const ct = this.add.graphics();
+    ct.fillStyle(0xffffff);
+    ct.fillRect(0, 0, 4, 4);
+    ct.generateTexture('confetti', 4, 4);
+    ct.destroy();
     ebg.fillStyle(0xff4444); ebg.fillCircle(3, 3, 3);
     ebg.fillStyle(0xffaaaa); ebg.fillCircle(3, 3, 1);
     ebg.generateTexture('enemy_bullet', 6, 6); ebg.destroy();
@@ -296,6 +307,14 @@ export class GameScene extends Phaser.Scene {
     // Boots
     g.fillStyle(p.boots); g.fillRect(3, 22, 5, 2); g.fillRect(10, 22, 5, 2);
     g.generateTexture(key, 22, 24); g.destroy();
+  }
+
+  createDoorTexture(key, p) {
+    if (this.textures.exists(key)) return;
+    const g = this.add.graphics();
+    g.fillStyle(0x444444); g.fillRect(0, 0, 32, 48);
+    g.lineStyle(4, 0x888888); g.strokeRect(0, 0, 32, 48);
+    g.generateTexture(key, 32, 48); g.destroy();
   }
 
   /**
@@ -570,19 +589,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ==================== WORLD ====================
-
   createBackground(level) {
-    // 16-bit Crisp Procedural Super Contra Parallax Background (Zero AI ghosts!)
+    // 16-bit Crisp Procedural Super Contra Parallax Background
     this.cameras.main.setBackgroundColor(level.bgBottom);
 
     if (this.textures.exists('bg_grad')) {
       this.textures.remove('bg_grad');
     }
 
+    // Colors change based on sub-level to give clear progression
+    let topColor = level.bgTop;
+    let bottomColor = level.bgBottom;
+    if (this.subLevelIndex === 1) {
+      topColor = 0x221133; bottomColor = 0x110011; // Cavern/Night
+    } else if (this.isBossLevel) {
+      topColor = 0x111111; bottomColor = 0x331111; // Base/Red alert
+    }
+
     const g = this.add.graphics();
     for (let y = 0; y < GAME_HEIGHT; y++) {
       const t = y / GAME_HEIGHT;
-      const color = this.lerpColor(level.bgTop, level.bgBottom, t);
+      const color = this.lerpColor(topColor, bottomColor, t);
       g.fillStyle(color, 1);
       g.fillRect(0, y, GAME_WIDTH, 1);
     }
@@ -593,120 +620,133 @@ export class GameScene extends Phaser.Scene {
       this.add.image(x, 0, 'bg_grad').setOrigin(0, 0).setDepth(-20);
     }
 
-    if (level.theme === 'jungle' && this.textures.exists('bg_jungle')) {
-      this.add.image(0, 0, 'bg_jungle')
-        .setOrigin(0, 0)
-        .setDisplaySize(this.worldWidth, GAME_HEIGHT)
-        .setScrollFactor(0.2)
-        .setAlpha(0.75)
-        .setDepth(-19);
-    }
-
-    // Parallax far mountains and jungle canopy
+    // Parallax far mountains/structures
     if (this.textures.exists('parallax_far')) {
       this.textures.remove('parallax_far');
     }
-
     const fg = this.add.graphics();
-    for (let i = 0; i < 50; i++) {
-      const x = (i / 50) * GAME_WIDTH * 2;
-      const h = 80 + (i * 47) % 140;
-      fg.fillStyle(0x0f2b18, 0.6);
-      fg.fillTriangle(x, GAME_HEIGHT - 80, x + 60, GAME_HEIGHT - 80 - h, x + 120, GAME_HEIGHT - 80);
+    
+    if (this.subLevelIndex === 0) {
+      // Jungle Mountains
+      for (let i = 0; i < 50; i++) {
+        const x = (i / 50) * GAME_WIDTH * 2;
+        const h = 80 + (i * 47) % 140;
+        fg.fillStyle(0x0f2b18, 0.6);
+        fg.fillTriangle(x, GAME_HEIGHT - 80, x + 60, GAME_HEIGHT - 80 - h, x + 120, GAME_HEIGHT - 80);
+      }
+    } else if (this.subLevelIndex === 1) {
+      // Cavern stalagmites
+      for (let i = 0; i < 60; i++) {
+        const x = (i / 60) * GAME_WIDTH * 2;
+        const h = 100 + (i * 29) % 200;
+        fg.fillStyle(0x2a1a3a, 0.5);
+        fg.fillTriangle(x, GAME_HEIGHT - 80, x + 40, GAME_HEIGHT - 80 - h, x + 80, GAME_HEIGHT - 80);
+      }
+    } else {
+      // Military Base Silhouettes
+      for (let i = 0; i < 20; i++) {
+        const x = (i / 20) * GAME_WIDTH * 2;
+        const h = 120 + (i * 73) % 100;
+        fg.fillStyle(0x1a1a20, 0.7);
+        fg.fillRect(x, GAME_HEIGHT - 80 - h, 50, h);
+        fg.fillStyle(0x0a0a10, 0.7);
+        fg.fillRect(x + 50, GAME_HEIGHT - 80 - h + 20, 30, h - 20);
+      }
     }
+    
     fg.generateTexture('parallax_far', GAME_WIDTH * 2, GAME_HEIGHT);
     fg.destroy();
 
     this.parallaxFar = this.add.tileSprite(0, 0, GAME_WIDTH, GAME_HEIGHT, 'parallax_far');
-    this.parallaxFar.setOrigin(0, 0).setScrollFactor(0).setDepth(-15);
+    this.parallaxFar.setOrigin(0, 0).setScrollFactor(0.2).setDepth(-15); // proper parallax
 
-    // Zone decor: 
-    // Zone 1 (0-800): Jungle trees & Vines
-    // Zone 2 (800-1400): River waterfall background & wooden pylons
-    // Zone 3 (1400-2200): Cavern rocks, stalactites & glowing crystals
-    // Zone 4 (2200-3200): Military fortress walls, steel girders & searchlights
+    // Decor Graphics (Midground)
     const mg = this.add.graphics();
     mg.setDepth(-10);
 
-    // Zone 1: Jungle Trees
-    for (let x = 50; x < 800; x += 120) {
-      mg.fillStyle(0x1a3311, 0.8);
-      mg.fillRect(x + 20, GAME_HEIGHT - 320, 24, 240); // trunk
-      mg.fillStyle(0x0e2608, 0.9);
-      mg.fillCircle(x + 32, GAME_HEIGHT - 320, 60); // leaves top
-    }
-
-    // Zone 2: River Waterfall background
-    mg.fillStyle(0x1a3a4a, 0.7);
-    mg.fillRect(800, 100, 600, GAME_HEIGHT - 100);
-    for (let wx = 820; wx < 1380; wx += 40) {
-      mg.fillStyle(0x3a6a8a, 0.4);
-      mg.fillRect(wx, 120, 12, GAME_HEIGHT - 160); // waterfall streams
-    }
-
-    // Zone 3: Cavern stalactites
-    mg.fillStyle(0x2a2228, 0.9);
-    mg.fillRect(1400, 0, 800, GAME_HEIGHT);
-    for (let cx = 1420; cx < 2180; cx += 80) {
-      mg.fillStyle(0x4a3a48, 0.9);
-      mg.fillTriangle(cx, 0, cx + 25, 120 + (cx % 50), cx + 50, 0); // stalactites
-      // Glowing crystal detail
-      mg.fillStyle(0x00ffff, 0.7);
-      mg.fillRect(cx + 30, GAME_HEIGHT - 180 - (cx % 90), 8, 16);
-    }
-
-    // Zone 4: Military Fortress
-    mg.fillStyle(0x1e1e24, 0.95);
-    mg.fillRect(2200, 0, 1000, GAME_HEIGHT);
-    for (let fx = 2220; fx < 3180; fx += 140) {
-      mg.fillStyle(0x3a3a44, 0.8);
-      mg.fillRect(fx, 60, 40, GAME_HEIGHT - 140); // pillars
-      mg.fillStyle(0xdd2222, 0.8);
-      mg.fillCircle(fx + 20, 50, 8); // red warning lights
+    if (this.subLevelIndex === 0) {
+      // Jungle Sublevel
+      for (let x = 50; x < this.worldWidth; x += 150) {
+        // Trunks
+        mg.fillStyle(0x1a3311, 0.8);
+        mg.fillRect(x + 20, GAME_HEIGHT - 320, 24, 240);
+        // Vines
+        mg.lineStyle(2, 0x1a4411, 0.7);
+        mg.beginPath(); mg.moveTo(x + 20, 0); mg.lineTo(x + 30, 200); mg.strokePath();
+        // Leaves
+        mg.fillStyle(0x0e2608, 0.9);
+        mg.fillCircle(x + 32, GAME_HEIGHT - 320, 70);
+        mg.fillCircle(x - 10, GAME_HEIGHT - 300, 50);
+        mg.fillCircle(x + 70, GAME_HEIGHT - 300, 50);
+      }
+    } else if (this.subLevelIndex === 1) {
+      // Cavern/River Sublevel
+      // Water background
+      mg.fillStyle(0x1a3a4a, 0.7);
+      mg.fillRect(0, 100, this.worldWidth, GAME_HEIGHT - 100);
+      for (let wx = 20; wx < this.worldWidth; wx += 60) {
+        mg.fillStyle(0x3a6a8a, 0.4);
+        mg.fillRect(wx, 120, 16, GAME_HEIGHT - 160); // waterfall streams
+      }
+      // Stalactites at the top
+      for (let cx = 0; cx < this.worldWidth; cx += 120) {
+        mg.fillStyle(0x2a1a3a, 0.9);
+        mg.fillTriangle(cx, 0, cx + 40, 150 + (cx % 70), cx + 80, 0);
+        mg.fillStyle(0x00ffff, 0.7); // Glowing crystal
+        mg.fillRect(cx + 35, 120 + (cx % 30), 10, 20);
+      }
+    } else {
+      // Boss Base Sublevel
+      mg.fillStyle(0x1e1e24, 0.95);
+      mg.fillRect(0, 0, this.worldWidth, GAME_HEIGHT);
+      for (let fx = 50; fx < this.worldWidth; fx += 200) {
+        // Tech pillars
+        mg.fillStyle(0x2a2a34, 0.8);
+        mg.fillRect(fx, 40, 60, GAME_HEIGHT - 40);
+        mg.fillStyle(0x4a4a54, 1);
+        mg.fillRect(fx + 5, 40, 10, GAME_HEIGHT - 40);
+        // Warning lights
+        mg.fillStyle(0xdd2222, 0.9);
+        mg.fillCircle(fx + 30, 80, 12);
+        mg.fillCircle(fx + 30, 250, 12);
+      }
     }
   }
 
   createGround(level) {
     this.ground = this.physics.add.staticGroup();
 
-    // Zone 1: Jungle dirt floor (0 - 800)
-    for (let x = 0; x < 800; x += 64) {
-      const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
-      tile.setTint(0x2d5a2d);
-      tile.setDepth(-5);
-    }
+    if (this.subLevelIndex === 0) {
+      // Jungle dirt floor
+      for (let x = 0; x < this.worldWidth; x += 64) {
+        const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
+        tile.setTint(0x2d5a2d);
+        tile.setDepth(-5);
+      }
+    } else if (this.subLevelIndex === 1) {
+      // Bridge over water floor
+      const waterBg = this.add.graphics();
+      waterBg.fillStyle(0x114488, 0.8);
+      waterBg.fillRect(0, GAME_HEIGHT - 80, this.worldWidth, 80);
+      waterBg.fillStyle(0x3388ee, 0.5);
+      for (let wx = 0; wx < this.worldWidth; wx += 40) {
+        waterBg.fillRect(wx, GAME_HEIGHT - 70, 25, 5);
+        waterBg.fillRect(wx + 15, GAME_HEIGHT - 40, 20, 4);
+      }
+      waterBg.setDepth(-6);
 
-    // Zone 2: River gap (800 - 1400) - Water floor underneath, wooden bridge ground above
-    // Water visual underneath
-    const waterBg = this.add.graphics();
-    waterBg.fillStyle(0x114488, 0.8);
-    waterBg.fillRect(800, GAME_HEIGHT - 80, 600, 80);
-    waterBg.fillStyle(0x3388ee, 0.5);
-    for (let wx = 800; wx < 1400; wx += 30) {
-      waterBg.fillRect(wx, GAME_HEIGHT - 70, 20, 4);
-      waterBg.fillRect(wx + 10, GAME_HEIGHT - 40, 15, 3);
-    }
-    waterBg.setDepth(-6);
-
-    // Wooden bridge floor across river
-    for (let x = 800; x < 1400; x += 64) {
-      const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'platform');
-      tile.setTint(0x996633);
-      tile.setDepth(-5);
-    }
-
-    // Zone 3: Cavern stone floor (1400 - 2200)
-    for (let x = 1400; x < 2200; x += 64) {
-      const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
-      tile.setTint(0x5a4a5a);
-      tile.setDepth(-5);
-    }
-
-    // Zone 4: Military Steel grid floor (2200 - 3200)
-    for (let x = 2200; x < this.worldWidth; x += 64) {
-      const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
-      tile.setTint(0x4a4a5a);
-      tile.setDepth(-5);
+      for (let x = 0; x < this.worldWidth; x += 64) {
+        const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'platform');
+        tile.setTint(0x885533);
+        tile.setDepth(-5);
+      }
+    } else {
+      // Base steel floor
+      for (let x = 0; x < this.worldWidth; x += 64) {
+        const tile = this.ground.create(x + 32, GAME_HEIGHT - 40, 'ground_tile');
+        tile.setTint(0x666677);
+        tile.setDepth(-5);
+      }
     }
 
     if (this.isBossLevel) {
@@ -789,6 +829,110 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ==================== ENTITIES ====================
+  // New methods for machine and door
+  createBossAndDoor() {
+    const groundY = GAME_HEIGHT - 40;
+    const xPos = this.worldWidth - 300;
+    const yPos = groundY - 48; // Sit on ground (height is 96, so center is 48 above ground)
+
+    // Create the Octopus Boss
+    this.octopusBoss = new OctopusBoss(this, xPos, yPos, this.isBossLevel);
+
+    // Door: use a plain add.rectangle + zone — no static physics body blocking player
+    const doorX = xPos + 130;
+    const doorY = groundY - 36;
+
+    // Door visual (graphics)
+    this.doorGraphics = this.add.graphics().setDepth(10).setVisible(false);
+    const dg = this.doorGraphics;
+    dg.fillStyle(0x553300); dg.fillRect(doorX - 30, doorY - 36, 60, 72);
+    dg.fillStyle(0x885500); dg.fillRect(doorX - 26, doorY - 32, 52, 64);
+    dg.fillStyle(0x442200); dg.fillRect(doorX - 4, doorY, 8, 32);  // frame mid
+    dg.fillStyle(0xffcc00); dg.fillCircle(doorX - 10, doorY + 5, 4); // knob
+
+    // Door label
+    this.doorLabel = this.add.text(doorX, doorY - 55, '[ SALIDA ]', {
+      fontSize: '9px', fontFamily: "'Press Start 2P', monospace",
+      fill: '#00ff88', stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(15).setVisible(false);
+
+    // Door collision zone
+    this.doorZone = this.add.zone(doorX, doorY, 60, 72);
+    this.physics.world.enable(this.doorZone);
+    this.doorZone.body.allowGravity = false;
+    this.doorZone.body.immovable = true;
+    this.doorZone.isActive = false; // only active after machine destroyed
+
+    // When the boss dies, activate the door
+    this.events.once('boss-destroyed', () => {
+      this.doorZone.isActive = true;
+      if (this.doorGraphics) this.doorGraphics.setVisible(true);
+      if (this.doorLabel) {
+        this.doorLabel.setVisible(true);
+        this.tweens.add({ targets: this.doorLabel, alpha: 0, duration: 400, yoyo: true, repeat: -1 });
+      }
+    });
+
+    // Boss bullet hits are handled manually in update() via checkBossHits()
+    // because physics.add.overlap with a Zone and ArcadeImage group is unreliable in Phaser 4.
+
+    // Overlap: player with door zone → transition
+    this.physics.add.overlap(this.player, this.doorZone, () => {
+      if (!this.doorZone.isActive || this.phase === 'celebrating') return;
+      this.phase = 'celebrating';
+      
+      this.player.body.setVelocityX(0);
+      this.player.body.checkCollision.none = true;
+      
+      audio.stopBGM();
+      audio.playVictory();
+      
+      // Confetti
+      const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+      for (let i = 0; i < 30; i++) {
+        this.time.delayedCall(i * 55, () => {
+          const c = this.add.rectangle(
+            this.player.x + (Math.random() - 0.5) * 250,
+            this.player.y - 20,
+            6, 6, colors[Math.floor(Math.random() * colors.length)]
+          ).setDepth(18);
+          this.tweens.add({
+            targets: c, y: c.y + 200 + Math.random() * 100,
+            alpha: 0, duration: 1400,
+            onComplete: () => c.destroy()
+          });
+        });
+      }
+
+      const textStr = this.isBossLevel ? 'MISSION ACCOMPLISHED' : 'STAGE CLEAR';
+      const clearText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40, textStr, {
+        fontSize: '22px', fontFamily: "'Press Start 2P', monospace",
+        fill: '#ffff00', stroke: '#000', strokeThickness: 4
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+      this.tweens.add({ targets: clearText, alpha: 0, duration: 200, yoyo: true, repeat: 6 });
+
+      this.time.delayedCall(2800, () => {
+        let nextLevel = this.levelIndex;
+        let nextSub = this.subLevelIndex + 1;
+        if (nextSub >= SUBLEVELS_PER_LEVEL) {
+          nextLevel += 1;
+          nextSub = 0;
+        }
+        if (nextLevel >= LEVELS.length) {
+          EventBus.emit('game-won', { score: this.score });
+          return;
+        }
+        this.scene.restart({
+          levelIndex: nextLevel,
+          subLevelIndex: nextSub,
+          difficulty: this.difficulty,
+          hero: this.hero,
+          score: this.score,
+          lives: this.lives,
+        });
+      });
+    });
+  }
 
   createPlayer() {
     this.player = new Player(this, 100, GAME_HEIGHT - 120, this.hero);
@@ -1008,30 +1152,56 @@ export class GameScene extends Phaser.Scene {
   // ==================== COLLISIONS ====================
 
   setupCollisions() {
-    this.physics.add.collider(this.player, this.ground);
-    this.physics.add.collider(this.player, this.platforms);
-    this.physics.add.collider(this.enemies, this.ground);
-    this.physics.add.collider(this.enemies, this.platforms);
-    this.physics.add.collider(this.weaponItems, this.ground);
-    this.physics.add.collider(this.weaponItems, this.platforms);
+    // Helper to safely add collider if both objects exist
+    const safeCollider = (objA, objB, callback) => {
+      if (!objA) {
+        console.warn('setupCollisions: objA undefined', objB);
+        return;
+      }
+      if (!objB) {
+        console.warn('setupCollisions: objB undefined', objA);
+        return;
+      }
+      // Groups don't have bodies directly, so we just rely on Phaser to handle it if the object exists.
+      const collider = this.physics.add.collider(objA, objB);
+      if (callback) {
+        this.physics.add.overlap(objA, objB, callback, null, this);
+      }
+      return collider;
+    };
+
+    // Player collisions
+    safeCollider(this.player, this.ground);
+    safeCollider(this.player, this.platforms);
+    // Enemy collisions
+    safeCollider(this.enemies, this.ground);
+    safeCollider(this.enemies, this.platforms);
+    // Weapon items collisions
+    safeCollider(this.weaponItems, this.ground);
+    safeCollider(this.weaponItems, this.platforms);
 
     // Cover collisions (sandbags stop players, enemies, and BOTH bullets)
     if (this.cover) {
-      this.physics.add.collider(this.player, this.cover);
-      this.physics.add.collider(this.enemies, this.cover);
-      this.physics.add.collider(this.weaponItems, this.cover);
+      safeCollider(this.player, this.cover);
+      safeCollider(this.enemies, this.cover);
+      safeCollider(this.weaponItems, this.cover);
       // Player bullets are blocked by sandbags
-      this.physics.add.collider(this.playerBullets, this.cover, (bullet) => {
-        this.createHitSpark(bullet.x, bullet.y);
-        bullet.disableBody(true, true);
-      });
+      if (this.playerBullets && this.cover) {
+        this.physics.add.collider(this.playerBullets, this.cover, (bullet) => {
+          this.createHitSpark(bullet.x, bullet.y);
+          bullet.disableBody(true, true);
+        });
+      }
       // Enemy bullets are also blocked
-      this.physics.add.collider(this.enemyBullets, this.cover, (bullet) => {
-        this.createHitSpark(bullet.x, bullet.y);
-        bullet.disableBody(true, true);
-      });
+      if (this.enemyBullets && this.cover) {
+        this.physics.add.collider(this.enemyBullets, this.cover, (bullet) => {
+          this.createHitSpark(bullet.x, bullet.y);
+          bullet.disableBody(true, true);
+        });
+      }
     }
 
+    // Overlaps
     this.physics.add.overlap(this.playerBullets, this.enemies, this.hitEnemy, null, this);
     this.physics.add.overlap(this.playerBullets, this.capsules, this.hitCapsule, null, this);
     this.physics.add.overlap(this.enemyBullets, this.player, this.hitPlayerBullet, null, this);
@@ -1260,7 +1430,7 @@ export class GameScene extends Phaser.Scene {
 
   // ==================== UPDATE ====================
 
-  update() {
+  update(time, delta) {
     if (this.phase !== 'playing') return;
     if (!this.player || !this.player.active) return;
 
@@ -1270,6 +1440,11 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.parallaxGenerated) {
       this.parallaxGenerated.tilePositionX = this.cameras.main.scrollX;
+    }
+
+    if (this.octopusBoss) {
+      this.octopusBoss.update(time, delta);
+      this.checkBossHits();
     }
 
     this.updatePlayer();
@@ -1367,33 +1542,65 @@ export class GameScene extends Phaser.Scene {
   checkLevelComplete() {
     if (this.phase !== 'playing') return;
 
+    // Non-boss levels: transition is handled ONLY by the door overlap in createMachineAndDoor().
+    // Boss levels: trigger when boss is defeated.
     if (this.isBossLevel) {
       if (this.boss && !this.boss.active) {
-        this.onLevelComplete();
-      }
-    } else {
-      if (this.player.x > this.worldWidth - 80) {
-        this.onLevelComplete();
+        this.onBossLevelComplete();
       }
     }
+    // No x-position check here — that caused the early freeze!
   }
 
-  onLevelComplete() {
-    this.phase = 'level-complete';
-    this.score += 500;
+  onBossLevelComplete() {
+    // Called when the boss is defeated in a boss sublevel
+    this.phase = 'celebrating';
+    this.score += 1000;
     EventBus.emit('score-changed', this.score);
 
-    const nextSubIdx = this.subLevelIndex + 1;
-    const nextLvlIdx = this.levelIndex + (nextSubIdx >= SUBLEVELS_PER_LEVEL ? 1 : 0);
+    audio.stopBGM();
+    audio.playVictory();
 
-    if (nextLvlIdx >= LEVELS.length) {
-      EventBus.emit('game-won', { score: this.score });
-    } else {
-      EventBus.emit('level-complete', {
+    // Show MISSION ACCOMPLISHED
+    const clearText = this.add.text(this.cameras.main.worldView.centerX, GAME_HEIGHT / 2 - 40, 'MISSION ACCOMPLISHED', {
+      fontSize: '18px', fontFamily: "'Press Start 2P', monospace", fill: '#ffff00'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
+    this.tweens.add({ targets: clearText, alpha: 0, duration: 200, yoyo: true, repeat: 6 });
+
+    // Confetti particles (Phaser 3 modern API)
+    const confettiColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+    for (let i = 0; i < 30; i++) {
+      this.time.delayedCall(i * 80, () => {
+        const c = this.add.rectangle(
+          this.player.x + (Math.random() - 0.5) * 200,
+          this.player.y - 50,
+          6, 6,
+          confettiColors[Math.floor(Math.random() * confettiColors.length)]
+        ).setDepth(15);
+        this.tweens.add({
+          targets: c, y: c.y + 200 + Math.random() * 100,
+          alpha: 0, duration: 1500,
+          onComplete: () => c.destroy()
+        });
+      });
+    }
+
+    this.time.delayedCall(3000, () => {
+      let nextLevel = this.levelIndex + 1;
+      let nextSub = 0;
+      if (nextLevel >= LEVELS.length) {
+        EventBus.emit('game-won', { score: this.score });
+        return;
+      }
+      this.scene.restart({
+        levelIndex: nextLevel,
+        subLevelIndex: nextSub,
+        difficulty: this.difficulty,
+        hero: this.hero,
         score: this.score,
         lives: this.lives,
       });
-    }
+    });
   }
 
   gameOver() {
@@ -1408,5 +1615,32 @@ export class GameScene extends Phaser.Scene {
     const g = Math.floor(((c1 >> 8) & 0xff) * (1 - t) + ((c2 >> 8) & 0xff) * t);
     const b = Math.floor((c1 & 0xff) * (1 - t) + (c2 & 0xff) * t);
     return (r << 16) | (g << 8) | b;
+  }
+
+  // Manual AABB bullet-vs-boss hit detection (Zone overlap is unreliable in Phaser 4)
+  checkBossHits() {
+    const boss = this.octopusBoss;
+    if (!boss || boss.isDestroyed) return;
+    if (!this.playerBullets) return;
+
+    // Boss bounding rect (centered on boss.x / boss.y)
+    const hw = boss.width / 2;
+    const hh = boss.height / 2;
+    const bLeft   = boss.x - hw;
+    const bRight  = boss.x + hw;
+    const bTop    = boss.y - hh;
+    const bBottom = boss.y + hh;
+
+    this.playerBullets.getChildren().forEach(bullet => {
+      if (!bullet.active) return;
+      const bx = bullet.x;
+      const by = bullet.y;
+      if (bx >= bLeft && bx <= bRight && by >= bTop && by <= bBottom) {
+        bullet.destroy();
+        this.createHitSpark(bx, by);
+        audio.playHurt();
+        boss.takeDamage(1);
+      }
+    });
   }
 }

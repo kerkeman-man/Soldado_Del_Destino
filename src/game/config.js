@@ -6,7 +6,7 @@ export const GAME_HEIGHT = 576;
 export const GRAVITY = 800;
 export const BULLET_SPEED = 600;
 export const ENEMY_BULLET_SPEED = 300;
-export const WORLD_WIDTH = 3200;
+export const WORLD_WIDTH = 2400;
 export const BOSS_WORLD_WIDTH = 1400;
 
 export const PALETTE = {

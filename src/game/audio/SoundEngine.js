@@ -180,6 +180,32 @@ class RetroAudioEngine {
     osc.stop(this.ctx.currentTime + 0.08);
   }
 
+  playVictory() {
+    if (!this.canPlay()) return;
+    
+    // Simple Contra-style victory jingle (arpeggio)
+    const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    osc.type = 'square';
+    gain.connect(this.ctx.destination);
+    osc.connect(gain);
+    
+    const now = this.ctx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    
+    notes.forEach((freq, i) => {
+      const time = now + (i * 0.15);
+      osc.frequency.setValueAtTime(freq, time);
+      gain.gain.setValueAtTime(0.2, time);
+      gain.gain.setTargetAtTime(0, time + 0.1, 0.05);
+    });
+    
+    osc.start(now);
+    osc.stop(now + (notes.length * 0.15) + 0.5);
+  }
+
   playBossWarning() {
     if (!this.canPlay()) return;
 

@@ -79,6 +79,11 @@
     { "id": 77, "mapKey": "map_77", "bossId": "boss_77" },
     { "id": 78, "mapKey": "map_78", "bossId": "boss_78" },
     { "id": 79, "mapKey": "map_79", "bossId": "boss_79" },
-    { "id": 80, "mapKey": "map_80", "bossId": "finalBoss" }
+    { "id": 80, "mapKey": "map_80", "bossId": "finalBoss",
+      "sublevels": [
+        { "index": 0, "machineId": "machine_0", "doorId": "door_0" },
+        { "index": 1, "machineId": "machine_1", "doorId": "door_1" }
+      ]
+    }
   ]
 }
