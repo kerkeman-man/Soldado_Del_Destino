@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { audio } from '../../audio/SoundEngine';
+import { DIFFICULTIES } from '@/game/config';
 export class OctopusBoss {
   constructor(scene, x, y, isBossLevel) {
     this.scene = scene;
@@ -12,7 +13,9 @@ export class OctopusBoss {
     this.width = 96;
     this.height = 96;
     
-    this.hp = isBossLevel ? 80 : 30;
+    // Use difficulty-configured health so behaviour matches other bosses/machines
+    const diff = DIFFICULTIES[scene.difficulty] || DIFFICULTIES.medium;
+    this.hp = isBossLevel ? (diff.bossHealth + (scene.levelIndex || 0) * 5) : (diff.enemyHealth + 1);
     this.maxHp = this.hp;
     this.isDestroyed = false;
     
